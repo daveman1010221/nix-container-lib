@@ -157,14 +157,9 @@ let
   # User-supplied extra env vars (UserProvided placement)
   # ---------------------------------------------------------------------------
   userEnvHook =
-    let
-      userProvided = builtins.filter
-        (ev: ev.placement ? UserProvided)
-        cfg.extraEnv;
-    in
-      lib.concatMapStrings
-        (ev: "export ${ev.name}=${lib.escapeShellArg ev.value}\n")
-        userProvided;
+    lib.concatMapStrings
+      (ev: "export ${ev.name}=${lib.escapeShellArg ev.value}\n")
+      cfg.startTimeEnv;
 
   # ---------------------------------------------------------------------------
   # Full shellHook assembly
