@@ -155,7 +155,7 @@ in
 
     # Rust nightly with rust-analyzer and wasm target
     (lib.meta.hiPrio (
-      inputs.rust-overlay.packages.${pkgs.system}.rust-bin.nightly.latest.default.override {
+      pkgs.rust-bin.nightly.latest.default.override {
         extensions = [ "rust-src" "rust-analyzer" ];
         targets    = [ "wasm32-unknown-unknown" ];
       }
