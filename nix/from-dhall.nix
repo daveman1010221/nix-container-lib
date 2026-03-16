@@ -107,9 +107,9 @@ let
       allPkgs = lib.concatMap resolveLayer cfg.packageLayers;
       seen    = builtins.foldl'
         (acc: p:
-          if acc.paths ? ${p.outPath}
+          if acc.paths ? ${builtins.unsafeDiscardStringContext p.outPath}
           then acc
-          else { paths = acc.paths // { ${p.outPath} = true; }; list = acc.list ++ [ p ]; }
+          else { paths = acc.paths // { ${builtins.unsafeDiscardStringContext p.outPath} = true; }; list = acc.list ++ [ p ]; }
         )
         { paths = {}; list = []; }
         allPkgs;
