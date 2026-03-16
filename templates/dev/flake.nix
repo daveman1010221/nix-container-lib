@@ -7,7 +7,7 @@
     rust-overlay.url        = "github:oxalica/rust-overlay";
     rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
 
-    polar-container-lib.url = "github:your-org/polar-container-lib";
+    polar-container-lib.url = "github:daveman1010221/nix-container-lib";
     polar-container-lib.inputs.nixpkgs.follows      = "nixpkgs";
     polar-container-lib.inputs.flake-utils.follows  = "flake-utils";
 

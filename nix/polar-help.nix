@@ -101,7 +101,7 @@ let
     TLS:             ${if cfg.tls != null && cfg.tls.enable then "enabled" else "disabled"}
     SSH:             ${if cfg.ssh != null && cfg.ssh.enable then "enabled (port ${toString cfg.ssh.port})" else "disabled"}
 
-    Built with polar-container-lib — https://github.com/your-org/polar-container-lib
+    Built with polar-container-lib — https://github.com/daveman1010221/nix-container-lib
     ────────────────────────────────────────────────────────────────────────────
     HELP
   '';

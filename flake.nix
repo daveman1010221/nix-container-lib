@@ -1,5 +1,5 @@
 {
-  description = "polar-container-lib: typed, composable OCI dev container library";
+  description = "nix-container-lib: typed, composable OCI dev container library";
 
   inputs = {
     nixpkgs.url     = "github:NixOS/nixpkgs/nixos-unstable";
@@ -15,7 +15,7 @@
       # -------------------------------------------------------------------------
 
       # Flake templates
-      # Usage: nix flake init -t github:your-org/polar-container-lib#dev
+      # Usage: nix flake init -t github:daveman1010221/nix-container-lib#dev
       templates = {
         dev = {
           path        = ./templates/dev;

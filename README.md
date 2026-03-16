@@ -84,7 +84,7 @@ more files in `nix/`.
 ```nix
 # your-project/flake.nix
 inputs = {
-  polar-container-lib.url = "github:your-org/polar-container-lib";
+  polar-container-lib.url = "github:daveman1010221/nix-container-lib";
   polar-container-lib.inputs.nixpkgs.follows = "nixpkgs";
 };
 ```
@@ -139,7 +139,7 @@ outputs = { self, nixpkgs, polar-container-lib, ... }:
 
 ```bash
 # New project from scratch
-nix flake init -t github:your-org/polar-container-lib#dev
+nix flake init -t github:daveman1010221/nix-container-lib#dev
 ```
 
 ---
