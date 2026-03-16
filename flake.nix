@@ -98,13 +98,11 @@
 
           packages = with pkgs; [
             # Dhall tooling
-            dhall           # type-check and evaluate .dhall files
-            dhall-json      # dhall-to-json, json-to-dhall
-            dhall-yaml      # dhall-to-yaml, yaml-to-dhall
-            dhall-nix       # dhall-to-nix (the bridge used by mkContainer)
+            dhall-json   # dhall-to-json, dhall-to-yaml, json-to-dhall
+            dhall-nix    # dhall-to-nix (bridge used by pkgs.dhallToNix)
 
             # Nix tooling
-            nixVersions.stable  # ensure a modern nix is available
+            nix                 # ensure a modern nix is available
             nix-prefetch-git    # useful for updating flake input revisions
 
             # General dev tools

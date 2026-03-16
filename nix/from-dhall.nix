@@ -27,12 +27,12 @@ let
   # Dhall union tags arrive as attrsets: { Dev = null } | { CI = null } | ...
   # We normalize to a simple string for downstream consumers.
   # ---------------------------------------------------------------------------
-  resolveMode = mode:
-    if mode ? Dev      then "dev"
-    else if mode ? CI  then "ci"
-    else if mode ? Agent then "agent"
-    else if mode ? Pipeline then "pipeline"
-    else throw "from-dhall: unknown Mode variant: ${builtins.toJSON mode}";
+  resolveMode = mode: mode {
+    Dev      = "dev";
+    CI       = "ci";
+    Agent    = "agent";
+    Pipeline = "pipeline";
+  };
 
   mode = resolveMode cfg.mode;
 
@@ -72,16 +72,31 @@ let
   # ---------------------------------------------------------------------------
   packageSets = import ./packages.nix { inherit pkgs inputs; };
 
+  # Dhall unions compile to Nix as functions: PackageLayer.Core = (u: u.Core)
+  # To dispatch on which variant we have, apply the layer function to a
+  # handler record where each field returns a recognizable sentinel, then
+  # match on the result.
   resolveLayer = layer:
-    if      layer ? Core     then packageSets.core
-    else if layer ? CI       then packageSets.ci
-    else if layer ? Dev      then packageSets.dev
-    else if layer ? Toolchain then packageSets.toolchain
-    else if layer ? Pipeline then packageSets.pipeline
-    else if layer ? Agent    then packageSets.agent
-    else if layer ? Custom   then
-      map resolvePackageRef layer.Custom.packages
-    else throw "from-dhall: unknown PackageLayer variant: ${builtins.toJSON layer}";
+    let
+      sentinel = layer {
+        Core     = "Core";
+        CI       = "CI";
+        Dev      = "Dev";
+        Toolchain = "Toolchain";
+        Pipeline = "Pipeline";
+        Agent    = "Agent";
+        Custom   = payload: { _custom = payload; };
+      };
+    in
+      if sentinel == "Core"     then packageSets.core
+      else if sentinel == "CI"  then packageSets.ci
+      else if sentinel == "Dev" then packageSets.dev
+      else if sentinel == "Toolchain" then packageSets.toolchain
+      else if sentinel == "Pipeline"  then packageSets.pipeline
+      else if sentinel == "Agent"     then packageSets.agent
+      else if sentinel ? _custom then
+        map resolvePackageRef sentinel._custom.packages
+      else throw "from-dhall: unknown PackageLayer variant";
 
   # Flatten all resolved layers into a single deduplicated package list
   resolvedPackages =
@@ -126,16 +141,16 @@ let
   # Produces the fragments that become /etc/nix/nix.conf entries and the
   # runtime arch-detection block in start.sh.
   # ---------------------------------------------------------------------------
-  resolveSandboxPolicy = policy:
-    if policy ? Enabled  then "enabled"
-    else if policy ? Disabled then "disabled"
-    else if policy ? Auto then "auto"
-    else throw "from-dhall: unknown SandboxPolicy: ${builtins.toJSON policy}";
+  resolveSandboxPolicy = policy: policy {
+    Enabled  = "enabled";
+    Disabled = "disabled";
+    Auto     = "auto";
+  };
 
-  resolveBuildUserCount = count:
-    if count ? Dynamic then { dynamic = true; fixed = null; }
-    else if count ? Fixed then { dynamic = false; fixed = count.Fixed; }
-    else throw "from-dhall: unknown BuildUserCount: ${builtins.toJSON count}";
+  resolveBuildUserCount = count: count {
+    Dynamic = { dynamic = true;  fixed = null; };
+    Fixed   = n: { dynamic = false; fixed = n; };
+  };
 
   resolvedNix = {
     enableDaemon   = cfg.nix.enableDaemon;
@@ -148,22 +163,22 @@ let
   # Pipeline translation
   # Optional PipelineConfig → the arguments pipeline.nix expects.
   # ---------------------------------------------------------------------------
-  resolveFailureMode = fm:
-    if fm ? FailFast then "fail-fast"
-    else if fm ? Collect then "collect"
-    else throw "from-dhall: unknown FailureMode: ${builtins.toJSON fm}";
+  resolveFailureMode = fm: fm {
+    FailFast = "fail-fast";
+    Collect  = "collect";
+  };
 
-  resolveStageInput = si:
-    if si ? Workspace   then { type = "workspace"; }
-    else if si ? Artifact then { type = "artifact"; name = si.Artifact; }
-    else if si ? Environment then { type = "environment"; }
-    else throw "from-dhall: unknown StageInput: ${builtins.toJSON si}";
+  resolveStageInput = si: si {
+    Workspace   = { type = "workspace"; };
+    Artifact    = name: { type = "artifact"; inherit name; };
+    Environment = { type = "environment"; };
+  };
 
-  resolveStageOutput = so:
-    if so ? Artifact  then { type = "artifact"; name = so.Artifact; }
-    else if so ? Report  then { type = "report"; }
-    else if so ? None    then { type = "none"; }
-    else throw "from-dhall: unknown StageOutput: ${builtins.toJSON so}";
+  resolveStageOutput = so: so {
+    Artifact = name: { type = "artifact"; inherit name; };
+    Report   = { type = "report"; };
+    None     = { type = "none"; };
+  };
 
   resolveStage = stage: {
     name        = stage.name;
@@ -205,7 +220,13 @@ let
 
   # Assertion: Core layer must be present
   coreAssertion =
-    if builtins.any (l: l ? Core) cfg.packageLayers
+    let
+      isCore = layer: (layer {
+        Core = true; CI = false; Dev = false; Toolchain = false;
+        Pipeline = false; Agent = false; Custom = _: false;
+      });
+    in
+    if builtins.any isCore cfg.packageLayers
     then true
     else throw "from-dhall: ContainerConfig '${cfg.name}': packageLayers must include Core";
 
