@@ -84,8 +84,8 @@ more files in `nix/`.
 ```nix
 # your-project/flake.nix
 inputs = {
-  polar-container-lib.url = "github:daveman1010221/nix-container-lib";
-  polar-container-lib.inputs.nixpkgs.follows = "nixpkgs";
+  nix-container-lib.url = "github:daveman1010221/nix-container-lib";
+  nix-container-lib.inputs.nixpkgs.follows = "nixpkgs";
 };
 ```
 
@@ -93,7 +93,7 @@ inputs = {
 
 ```dhall
 -- your-project/container.dhall
-let Lib      = inputs:polar-container-lib/dhall/prelude.dhall
+let Lib      = inputs:nix-container-lib/dhall/prelude.dhall
 let defaults = Lib.defaults
 
 in defaults.devContainer //
@@ -120,11 +120,11 @@ in defaults.devContainer //
 
 ```nix
 # your-project/flake.nix
-outputs = { self, nixpkgs, polar-container-lib, ... }:
+outputs = { self, nixpkgs, nix-container-lib, ... }:
   flake-utils.lib.eachDefaultSystem (system:
     let
       pkgs = import nixpkgs { inherit system; };
-      container = polar-container-lib.lib.${system}.mkContainer {
+      container = nix-container-lib.lib.${system}.mkContainer {
         inherit system pkgs inputs;
         configPath = ./container.dhall;
       };
@@ -226,7 +226,7 @@ now avoids conflating two things that only superficially look the same.
 ## Repository Layout
 
 ```
-polar-container-lib/
+nix-container-lib/
   flake.nix               # Library flake: exports lib, templates, dhall paths
   dhall/
     lib/
