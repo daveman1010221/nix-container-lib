@@ -99,8 +99,13 @@ let
       else throw "from-dhall: unknown PackageLayer variant";
 
   # Flatten all resolved layers into a single deduplicated package list
+  # Use uniqueBy on outPath rather than lib.unique (structural equality).
+  # lib.unique deeply evaluates every element for comparison, which triggers
+  # the NixOS module system on derivations like neovim that carry plugin
+  # configurations as attributes. Comparing outPaths is correct and safe —
+  # two derivations with the same outPath are the same package.
   resolvedPackages =
-    lib.unique (lib.concatMap resolveLayer cfg.packageLayers);
+    lib.uniqueBy (p: p.outPath) (lib.concatMap resolveLayer cfg.packageLayers);
 
   # ---------------------------------------------------------------------------
   # EnvVar split
