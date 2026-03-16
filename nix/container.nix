@@ -29,7 +29,7 @@ let
   lib = pkgs.lib;
 
   # ---------------------------------------------------------------------------
-  # Evaluate the Dhall config to a Nix attrset
+  # Evaluate the Dhall config to a Nix attrset.
   # dhallToNix is available in nixpkgs as pkgs.dhallToNix.
   # The result is a Nix value with the same structure as the Dhall type.
   # ---------------------------------------------------------------------------
