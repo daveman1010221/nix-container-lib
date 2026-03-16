@@ -347,14 +347,23 @@ let
   # Naming: symlinks in vendor_functions.d strip the nix hash prefix from
   # the filename so the function name is clean: "lol.fish" not "abc123-lol.fish"
   # ---------------------------------------------------------------------------
-  staticFuncDir   = ./vendor_functions;
+  staticFuncDir = ./vendor_functions;
+
+  # Wrap each static function file as a pkgs.writeText derivation so it
+  # becomes a proper Nix store path that is tracked as a closure dependency.
+  # Raw path literals (./vendor_functions/lh.fish) resolve to the library
+  # source tree store path, which is NOT included in the container image
+  # closure — causing dangling symlinks inside the container.
+  # Wrapping as derivations ensures each file lands in its own store path
+  # that IS registered in closureInfo and present in the image layers.
   staticFuncPaths =
     let
-      entries = builtins.readDir staticFuncDir;
-      names   = builtins.attrNames entries;
+      entries   = builtins.readDir staticFuncDir;
+      names     = builtins.attrNames entries;
       fishFiles = builtins.filter (n: lib.hasSuffix ".fish" n) names;
     in
-      map (n: staticFuncDir + "/${n}") fishFiles;
+      map (n: pkgs.writeText n (builtins.readFile (staticFuncDir + "/${n}")))
+        fishFiles;
 
   # Templated functions: lol.nix and man.nix from the original polar
   lolFunc = pkgs.writeText "lol.fish" ''
