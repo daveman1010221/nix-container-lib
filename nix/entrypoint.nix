@@ -264,6 +264,7 @@ let
     ##############################################################################
     CARGO_TARGET_DIR="/var/cache/cargo-target"
     mkdir -p "$CARGO_TARGET_DIR"
+    chown "$DEV_UID:$DEV_GID" /var/cache
     chown "$DEV_UID:$DEV_GID" "$CARGO_TARGET_DIR"
     chmod 0755 "$CARGO_TARGET_DIR"
     export CARGO_TARGET_DIR

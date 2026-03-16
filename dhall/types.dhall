@@ -1,4 +1,4 @@
--- polar-container-lib/dhall/types.dhall
+-- polar-container-lib/dhall/lib/types.dhall
 --
 -- Canonical type definitions for the polar container library.
 -- All types are defined here and re-exported via prelude.dhall.
@@ -130,6 +130,10 @@ let PipelineConfig =
   { name        : Text
   , stages      : List Stage
   , artifactDir : Text
+  , workingDir  : Text
+  -- workingDir: the directory stages run in. Defaults to /workspace.
+  -- Set to a subdirectory for projects where Cargo.toml is not at the
+  -- workspace root (e.g. "src/agents" for a mono-repo layout).
   }
 
 -- ---------------------------------------------------------------------------
@@ -258,3 +262,4 @@ in
   , UserConfig      = UserConfig
   , ContainerConfig = ContainerConfig
   }
+

@@ -196,6 +196,7 @@ let
       name        = cfg.pipeline.name;
       stages      = map resolveStage cfg.pipeline.stages;
       artifactDir = cfg.pipeline.artifactDir;
+      workingDir  = cfg.pipeline.workingDir;
     };
 
   # ---------------------------------------------------------------------------

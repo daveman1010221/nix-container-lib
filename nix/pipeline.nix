@@ -77,6 +77,7 @@ let
   manifestData = {
     name        = pipeline.name;
     artifactDir = pipeline.artifactDir;
+    workingDir  = pipeline.workingDir;
     stages      = map (stage: {
       inherit (stage) name command failureMode condition;
       inputs  = map (i:
@@ -120,6 +121,7 @@ let
     MANIFEST="/etc/pipeline/pipeline.json"
     PIPELINE_NAME=$(jq -r '.name' "$MANIFEST")
     ARTIFACT_DIR=$(jq -r '.artifactDir' "$MANIFEST")
+    WORKING_DIR=$(jq -r '.workingDir' "$MANIFEST")
     TARGET_STAGE="''${1:-all}"
 
     mkdir -p "$ARTIFACT_DIR"
@@ -156,8 +158,10 @@ let
       local log_file="$ARTIFACT_DIR/$name.log"
       local exit_file="$ARTIFACT_DIR/$name.exit"
 
-      # Run the stage command in /workspace, capturing output
-      (cd /workspace && eval "$command") 2>&1 | tee "$log_file"
+      # Run the stage command in the configured working directory
+      local work_dir
+      work_dir=$(jq -r '.workingDir' "$MANIFEST")
+      (cd "$work_dir" && eval "$command") 2>&1 | tee "$log_file"
       local stage_exit="''${PIPESTATUS[0]}"
 
       echo "$stage_exit" > "$exit_file"
