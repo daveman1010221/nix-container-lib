@@ -1,4 +1,4 @@
-# polar-container-lib
+# nix-container-lib
 
 A typed, composable library for building OCI dev containers with Nix.
 
