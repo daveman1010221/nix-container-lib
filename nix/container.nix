@@ -33,7 +33,7 @@ let
   # dhallToNix is available in nixpkgs as pkgs.dhallToNix.
   # The result is a Nix value with the same structure as the Dhall type.
   # ---------------------------------------------------------------------------
-  rawCfg = (pkgs.dhallToNix configPath).result;
+  rawCfg = pkgs.dhallToNix configPath;
 
   # ---------------------------------------------------------------------------
   # Translate the raw Dhall output to the internal config structure
