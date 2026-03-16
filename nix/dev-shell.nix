@@ -35,7 +35,16 @@ let
   # specific infrastructure (start.sh, polar-help, etc.) which don't make
   # sense on the host.
   # ---------------------------------------------------------------------------
-  devShellPackages = cfg.packages ++ [ pkgs.pkg-config pkgs.openssl ];
+  # Filter out packages that carry NixOS module attributes (like neovim from
+  # myNeovimOverlay) — mkShell evaluates nativeBuildInputs deeply and triggers
+  # the module system on derivations with plugin/option attributes.
+  # These packages work fine in the container but not in the host dev shell.
+  isSafeForShell = p:
+    !(p ? plugins) && !(p ? vimPackage);
+
+  devShellPackages =
+    (builtins.filter isSafeForShell cfg.packages)
+    ++ [ pkgs.pkg-config pkgs.openssl ];
 
   # ---------------------------------------------------------------------------
   # TLS environment setup
