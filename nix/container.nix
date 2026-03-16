@@ -31,8 +31,9 @@ let
   # ---------------------------------------------------------------------------
   # Evaluate the Dhall config to a Nix attrset.
   # dhallToNix is available in nixpkgs as pkgs.dhallToNix.
+  # The result is a Nix value with the same structure as the Dhall type.
   # ---------------------------------------------------------------------------
-  rawCfg = pkgs.dhallToNix configPath;
+  rawCfg = (pkgs.dhallToNix configPath).result;
 
   # ---------------------------------------------------------------------------
   # Translate the raw Dhall output to the internal config structure
@@ -85,7 +86,7 @@ let
   # ---------------------------------------------------------------------------
   tlsDerivation =
     if cfg.tls != null && cfg.tls.generateCerts
-    then pkgs.callPackage ./gen-certs.nix {}
+    then import ./gen-certs.nix { inherit pkgs cfg; }
     else null;
 
   # ---------------------------------------------------------------------------
