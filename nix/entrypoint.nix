@@ -59,6 +59,11 @@ let
         export LIBCLANG_PATH="${pkgs.llvmPackages_19.libclang.lib}/lib"
         export LOCALE_ARCHIVE="${pkgs.glibcLocalesUtf8}/lib/locale/locale-archive"
         export COREUTILS="${pkgs.uutils-coreutils-noprefix}"
+        export OPENSSL_DIR="${pkgs.openssl.dev}"
+        export OPENSSL_LIB_DIR="${pkgs.openssl.out}/lib"
+        export OPENSSL_INCLUDE_DIR="${pkgs.openssl.dev}/include"
+        export OPENSSL_INCLUDE_DIR="${pkgs.openssl.dev}/include"
+        export PKG_CONFIG_PATH="${pkgs.openssl.dev}/lib/pkgconfig:$PKG_CONFIG_PATH"
       '';
 
       # User-supplied StartTime env vars

@@ -102,6 +102,14 @@ let
     }
     else throw "shell.nix: unknown colorScheme '${shellCfg.colorScheme}'. Supported: gruvbox";
 
+  fishConfD = pkgs.writeTextFile {
+    name        = "polar-init.fish";
+    destination = "/etc/fish/conf.d/polar-init.fish";
+    text        = ''
+      source /etc/fish/shellInit.fish
+    '';
+  };
+
   # ---------------------------------------------------------------------------
   # interactiveShellInit.fish
   # The full interactive experience. Evaluated as a Nix derivation so that
@@ -413,4 +421,4 @@ let
 
 in
   # Return a list of derivations for container.nix to include in shellFiles
-  [ interactiveShellInitFile shellInitFile fishConfig vendorFuncs ]
+  [ interactiveShellInitFile shellInitFile fishConfig vendorFuncs fishConfD ]
