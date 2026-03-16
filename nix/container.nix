@@ -49,7 +49,7 @@ let
   # ---------------------------------------------------------------------------
   # Nix-in-Nix infrastructure
   # ---------------------------------------------------------------------------
-  nixInfra = import ./nix-infra.nix { inherit pkgs cfg; };
+  nixInfra = import ./nix-infra.nix { inherit pkgs system cfg; };
 
   # ---------------------------------------------------------------------------
   # Build the package environment
@@ -116,10 +116,8 @@ let
     ${pkgs.nix}/bin/nix-store --load-db < ${closureInfo}/registration
   '';
 
-  gcRoots = import ./gc-roots.nix {
-    inherit pkgs allContents;
-    extraRoots = nixInfra.configFiles;
-  };
+  # allContents already includes all nixInfra derivations — no extraRoots.
+  gcRoots = import ./gc-roots.nix { inherit pkgs allContents; };
 
   # ---------------------------------------------------------------------------
   # Standard build-time environment variables (safe for config.Env)
