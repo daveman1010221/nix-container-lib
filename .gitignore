@@ -1,0 +1,21 @@
+
+# Nix
+result
+result-*
+ 
+# Dhall cache
+.dhall-cache/
+.cache/
+ 
+# Editor artifacts
+.direnv/
+.envrc.local
+*.swp
+*.swo
+.idea/
+.vscode/
+ 
+# OS artifacts
+.DS_Store
+Thumbs.db
+
