@@ -1,8 +1,21 @@
 ## [unreleased]
 
+### 🐛 Bug Fixes
+
+- Correct usage of the rust overlay
+- Call gen-certs.nix with import not callPackage
+- Remove .result regression from dhallToNix call
+- Move neovim to packages for the lib
+- Move neovim to packages for the lib
+- Dev-shell uses startTimeEnv not cfg.extraEnv
+- Address some issues with the running container
+- Vendor functions and OpenSSL env at container startup
+- Wrap static vendor functions as writeText derivations
+
 ### ⚙️ Miscellaneous Tasks
 
 - Add cliff.toml for changelog generation
+- Add initial CHANGELOG.md
 ## [0.1.0] - 2026-03-16
 
 ### 🚀 Features
