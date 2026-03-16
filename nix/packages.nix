@@ -131,7 +131,6 @@ in
     tree
     tree-sitter
     which
-    lib.optional (pkgs ? nvim-pkg) pkgs.nvim-pkg
   ];
 
   # ---------------------------------------------------------------------------
