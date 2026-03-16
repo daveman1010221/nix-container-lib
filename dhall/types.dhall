@@ -1,4 +1,4 @@
--- polar-container-lib/dhall/lib/types.dhall
+-- polar-container-lib/dhall/types.dhall
 --
 -- Canonical type definitions for the polar container library.
 -- All types are defined here and re-exported via prelude.dhall.

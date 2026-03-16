@@ -1,4 +1,4 @@
--- polar-container-lib/dhall/lib/defaults.dhall
+-- polar-container-lib/dhall/defaults.dhall
 --
 -- Opinionated default configurations for common container archetypes.
 -- These encode the accumulated decisions from the polar dev container

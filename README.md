@@ -19,7 +19,7 @@ The library is organized in two layers with a clean seam between them.
 
 ### Layer 1: Dhall (the interface)
 
-`dhall/lib/` contains the type definitions and opinionated defaults that a
+`dhall/` contains the type definitions and opinionated defaults that a
 project author writes against. Dhall gives us:
 
 - **Type safety**: configuration errors surface before Nix evaluation
@@ -28,7 +28,7 @@ project author writes against. Dhall gives us:
 - **Self-documentation**: the types ARE the documentation
 
 ```
-dhall/lib/
+dhall/
   types.dhall     # All type definitions — the contract
   defaults.dhall  # Opinionated starting points — the accumulated wisdom
   prelude.dhall   # Single import point for consumers
@@ -93,7 +93,7 @@ inputs = {
 
 ```dhall
 -- your-project/container.dhall
-let Lib      = inputs:polar-container-lib/dhall/lib/prelude.dhall
+let Lib      = inputs:polar-container-lib/dhall/prelude.dhall
 let defaults = Lib.defaults
 
 in defaults.devContainer //

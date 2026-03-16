@@ -1,4 +1,4 @@
--- polar-container-lib/dhall/lib/prelude.dhall
+-- polar-container-lib/dhall/prelude.dhall
 --
 -- Single import point for library consumers.
 -- Import this file and you have everything you need:
@@ -8,7 +8,7 @@
 --
 --   or locally:
 --
---   let Lib = ./lib/prelude.dhall
+--   let Lib = ./prelude.dhall
 --
 --   in Lib.defaults.devContainer // { name = "my-project", ... }
 

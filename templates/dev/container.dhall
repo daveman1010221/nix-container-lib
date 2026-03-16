@@ -2,8 +2,8 @@
 -- Dev container configuration for my-project.
 -- Edit this file. Do not edit flake.nix unless you need new flake inputs.
 --
--- Full type reference: polar-container-lib/dhall/lib/types.dhall
--- Available defaults:  polar-container-lib/dhall/lib/defaults.dhall
+-- Full type reference: polar-container-lib/dhall/types.dhall
+-- Available defaults:  polar-container-lib/dhall/defaults.dhall
 
 let Lib      = (builtins.getFlake "polar-container-lib").dhall.prelude
 let defaults = Lib.defaults
