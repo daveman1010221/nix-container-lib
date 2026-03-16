@@ -102,14 +102,6 @@ let
     }
     else throw "shell.nix: unknown colorScheme '${shellCfg.colorScheme}'. Supported: gruvbox";
 
-  fishConfD = pkgs.writeTextFile {
-    name        = "polar-init.fish";
-    destination = "/etc/fish/conf.d/polar-init.fish";
-    text        = ''
-      source /etc/fish/shellInit.fish
-    '';
-  };
-
   # ---------------------------------------------------------------------------
   # interactiveShellInit.fish
   # The full interactive experience. Evaluated as a Nix derivation so that
@@ -417,6 +409,26 @@ let
     name        = "fish-config";
     destination = "/etc/container-skel/config.fish";
     text        = configFishText;
+  };
+
+  # ---------------------------------------------------------------------------
+  # /etc/fish/conf.d entry
+  # Fish automatically sources all *.fish files in /etc/fish/conf.d/ at
+  # startup — for every shell, before any user config. This is the correct
+  # mechanism to ensure shellInit.fish (which adds vendor_functions.d to
+  # $fish_function_path) runs before direnv, before the greeting, and before
+  # any interactive input. Without this, vendor functions are not available
+  # until direnv loads the dev shell.
+  # ---------------------------------------------------------------------------
+  fishConfD = pkgs.writeTextFile {
+    name        = "polar-init.fish";
+    destination = "/etc/fish/conf.d/polar-init.fish";
+    text        = ''
+      # Sourced automatically by Fish at startup via conf.d mechanism.
+      # Loads vendor_functions.d into $fish_function_path and sources
+      # interactiveShellInit for login shells.
+      source /etc/fish/shellInit.fish
+    '';
   };
 
 in
