@@ -120,6 +120,25 @@ let
           chown -R "$uid:$gid" /home/$user
           chmod -R 755 /home/$user
           chmod u+w /home/$user
+
+          # Supplemental groups (e.g. video/render for GPU, audio, etc.)
+          # Generated from cfg.user.supplementalGroups at build time.
+          SUPP_GROUPS="${builtins.concatStringsSep "," (
+            map (g: "${g.name}:${toString g.gid}") cfg.user.supplementalGroups
+          )}"
+          if [[ -n "$SUPP_GROUPS" ]]; then
+            IFS=',' read -ra ENTRIES <<< "$SUPP_GROUPS"
+            for entry in "''${ENTRIES[@]}"; do
+              g_name="''${entry%%:*}"
+              g_gid="''${entry##*:}"
+              if getent group "$g_name" >/dev/null 2>&1; then
+                sed -i "/^$g_name:/ s/$/,$user/" /etc/group
+              else
+                echo "$g_name:x:$g_gid:$user" >> /etc/group
+                echo "$g_name:!::" >> /etc/gshadow 2>/dev/null || true
+              fi
+            done
+          fi
       }
 
       (( EUID == 0 )) || die "please run as root"
@@ -264,8 +283,7 @@ let
     ##############################################################################
     CARGO_TARGET_DIR="/var/cache/cargo-target"
     mkdir -p "$CARGO_TARGET_DIR"
-    chown "$DEV_UID:$DEV_GID" /var/cache
-    chown "$DEV_UID:$DEV_GID" "$CARGO_TARGET_DIR"
+    chown -R "$DEV_UID:$DEV_GID" /var/cache
     chmod 0755 "$CARGO_TARGET_DIR"
     export CARGO_TARGET_DIR
   '';
@@ -393,4 +411,3 @@ in
     + phaseBanner
     + phaseExec
   )
-

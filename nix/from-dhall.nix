@@ -259,9 +259,10 @@ let
   # User config translation
   # ---------------------------------------------------------------------------
   resolvedUser = {
-    createUser   = cfg.user.createUser;
-    defaultShell = cfg.user.defaultShell;
-    skeletonPath = cfg.user.skeletonPath;
+    createUser         = cfg.user.createUser;
+    defaultShell       = cfg.user.defaultShell;
+    skeletonPath       = cfg.user.skeletonPath;
+    supplementalGroups = cfg.user.supplementalGroups;
   };
 
 in

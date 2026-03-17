@@ -206,11 +206,17 @@ let NixConfig =
 -- When createUser = True, the entrypoint reads CREATE_USER / CREATE_UID /
 -- CREATE_GID from the environment and provisions a matching user.
 -- When False, the container runs as root.
+--
+-- supplementalGroups: additional groups to add the user to at container
+-- startup. Used for GPU access (video, render), audio, etc. Each entry
+-- is a { name : Text, gid : Natural } pair. The group is created if it
+-- does not already exist in /etc/group.
 -- ---------------------------------------------------------------------------
 let UserConfig =
-  { createUser    : Bool
-  , defaultShell  : Text
-  , skeletonPath  : Text   -- path to skeleton config, e.g. /etc/container-skel
+  { createUser         : Bool
+  , defaultShell       : Text
+  , skeletonPath       : Text   -- path to skeleton config, e.g. /etc/container-skel
+  , supplementalGroups : List { name : Text, gid : Natural }
   }
 
 -- ---------------------------------------------------------------------------
@@ -262,4 +268,3 @@ in
   , UserConfig      = UserConfig
   , ContainerConfig = ContainerConfig
   }
-

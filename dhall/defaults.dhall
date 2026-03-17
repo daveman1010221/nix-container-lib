@@ -61,8 +61,9 @@ let defaultUser : T.UserConfig =
     -- When CREATE_USER / CREATE_UID / CREATE_GID are set in the environment,
     -- start.sh provisions a matching user so bind-mounted files have correct
     -- ownership. Falls back to root when vars are absent.
-  , defaultShell = "/bin/fish"
-  , skeletonPath = "/etc/container-skel"
+  , defaultShell         = "/bin/fish"
+  , skeletonPath         = "/etc/container-skel"
+  , supplementalGroups   = [] : List { name : Text, gid : Natural }
   }
 
 -- ---------------------------------------------------------------------------
