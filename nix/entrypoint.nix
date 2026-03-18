@@ -177,9 +177,9 @@ let
       # for llama-server so the container user can elevate for GPU access.
       SUDO_BIN=$(find /nix/store -name "sudo" -type f 2>/dev/null | head -1)
       if [[ -n "$SUDO_BIN" ]]; then
-        cp "$SUDO_BIN" /usr/local/bin/sudo
-        chown root:root /usr/local/bin/sudo
-        chmod 4755 /usr/local/bin/sudo
+        cp "$SUDO_BIN" /bin/sudo
+        chown root:root /bin/sudo
+        chmod 4755 /bin/sudo
         mkdir -p /etc/sudoers.d
         LLAMA_BIN=$(which llama-server 2>/dev/null || true)
         if [[ -n "$LLAMA_BIN" ]]; then
@@ -267,6 +267,8 @@ let
       ''
     else ''
       # Nix daemon disabled for this container mode (${cfg.mode})
+    '';
+
     '';
 
   # ---------------------------------------------------------------------------
@@ -440,6 +442,4 @@ in
     + phaseNixDaemon
     + phaseCargoCache
     + phaseSSH
-    + phaseBanner
-    + phaseExec
   )
