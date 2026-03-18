@@ -183,6 +183,12 @@ let
         cp "$SUDO_REAL" /usr/bin/sudo
         chown root:root /usr/bin/sudo
         chmod 4755 /usr/bin/sudo
+        # Create minimal /etc/sudoers — required before sudoers.d is read
+        if [[ ! -f /etc/sudoers ]]; then
+          echo "root ALL=(ALL:ALL) ALL"    > /etc/sudoers
+          echo "#includedir /etc/sudoers.d" >> /etc/sudoers
+          chmod 440 /etc/sudoers
+        fi
         mkdir -p /etc/sudoers.d
         LLAMA_BIN=$(which llama-server 2>/dev/null || true)
         if [[ -n "$LLAMA_BIN" ]]; then

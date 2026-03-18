@@ -324,10 +324,13 @@ let
     # ~/.config/fish/config.fish
     # This file was placed here by the container skeleton.
     # Add personal tweaks below the source lines.
-
+  
+    # Ensure /usr/bin is in PATH for setuid binaries (e.g. sudo for GPU workloads)
+    fish_add_path /usr/bin
+  
     source /etc/fish/shellInit.fish
     source /etc/fish/interactiveShellInit.fish
-
+  
     # Personal tweaks (uncomment and customize as needed):
     # set -gx EDITOR nvim
     # alias gs 'git status'
