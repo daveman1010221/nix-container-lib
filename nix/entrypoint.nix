@@ -185,7 +185,7 @@ let
         chmod 4755 /usr/bin/sudo
         # Create minimal /etc/sudoers — required before sudoers.d is read
         if [[ ! -f /etc/sudoers ]]; then
-          echo "root ALL=(ALL:ALL) ALL"    > /etc/sudoers
+          echo "root ALL=(ALL:ALL) ALL"     > /etc/sudoers
           echo "#includedir /etc/sudoers.d" >> /etc/sudoers
           chmod 440 /etc/sudoers
         fi
@@ -196,6 +196,13 @@ let
             > /etc/sudoers.d/llama-server
           chmod 440 /etc/sudoers.d/llama-server
         fi
+        # Create minimal PAM config for sudo — pam_permit allows all
+        mkdir -p /etc/pam.d
+        printf '%s\n' \
+          "auth       sufficient   pam_permit.so" \
+          "account    sufficient   pam_permit.so" \
+          "session    sufficient   pam_permit.so" \
+          > /etc/pam.d/sudo
       fi
     ''
     else "";
