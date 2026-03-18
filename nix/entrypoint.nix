@@ -175,16 +175,14 @@ let
       # With --userns=keep-id, uid 0 inside maps to uid 1000 outside, so
       # llama-server fails to initialize ROCm. We set up passwordless sudo
       # for llama-server so the container user can elevate for GPU access.
-      SUDO_BIN=$(find /nix/store -name "sudo" -type f 2>/dev/null | head -1)
-      if [[ -n "$SUDO_BIN" ]]; then
-        # /bin/sudo may already exist as a symlink into the Nix store.
-        # Symlinks cannot have setuid set, so we must break the symlink
-        # by resolving and copying the real binary before chmod.
-        SUDO_REAL=$(readlink -f /bin/sudo 2>/dev/null || echo "$SUDO_BIN")
-        rm -f /bin/sudo
-        cp "$SUDO_REAL" /bin/sudo
-        chown root:root /bin/sudo
-        chmod 4755 /bin/sudo
+      # /bin is a read-only Nix symlink farm — use /usr/bin which is a
+      # writable overlay layer and is in PATH.
+      SUDO_REAL=$(readlink -f /bin/sudo 2>/dev/null || \
+        find /nix/store -name "sudo" -type f 2>/dev/null | head -1)
+      if [[ -n "$SUDO_REAL" ]]; then
+        cp "$SUDO_REAL" /usr/bin/sudo
+        chown root:root /usr/bin/sudo
+        chmod 4755 /usr/bin/sudo
         mkdir -p /etc/sudoers.d
         LLAMA_BIN=$(which llama-server 2>/dev/null || true)
         if [[ -n "$LLAMA_BIN" ]]; then
