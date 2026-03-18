@@ -161,6 +161,37 @@ let
     '';
 
   # ---------------------------------------------------------------------------
+  # Phase 3.5: Sudo setup (optional — only when supplementalGroups present)
+  # Sets up passwordless sudo for llama-server so the container user can
+  # run GPU workloads that require uid 0 on the host KFD driver.
+  # ---------------------------------------------------------------------------
+  phaseSudo =
+    if cfg.user.supplementalGroups != []
+    then ''
+      ##############################################################################
+      # Sudo setup for GPU workloads
+      ##############################################################################
+      # The KFD driver requires the calling process to be uid 0 on the host.
+      # With --userns=keep-id, uid 0 inside maps to uid 1000 outside, so
+      # llama-server fails to initialize ROCm. We set up passwordless sudo
+      # for llama-server so the container user can elevate for GPU access.
+      SUDO_BIN=$(find /nix/store -name "sudo" -type f 2>/dev/null | head -1)
+      if [[ -n "$SUDO_BIN" ]]; then
+        cp "$SUDO_BIN" /usr/local/bin/sudo
+        chown root:root /usr/local/bin/sudo
+        chmod 4755 /usr/local/bin/sudo
+        mkdir -p /etc/sudoers.d
+        LLAMA_BIN=$(which llama-server 2>/dev/null || true)
+        if [[ -n "$LLAMA_BIN" ]]; then
+          echo "$DEV_USER ALL=(root) NOPASSWD: $LLAMA_BIN" \
+            > /etc/sudoers.d/llama-server
+          chmod 440 /etc/sudoers.d/llama-server
+        fi
+      fi
+    ''
+    else "";
+
+  # ---------------------------------------------------------------------------
   # Phase 4: Nix daemon (optional)
   # ---------------------------------------------------------------------------
   phaseNixDaemon =
@@ -404,6 +435,7 @@ in
     phasePreamble
     + phaseStorePathExports
     + phaseUserCreation
+    + phaseSudo
     + phaseArchConfig
     + phaseNixDaemon
     + phaseCargoCache
