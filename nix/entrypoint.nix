@@ -443,4 +443,6 @@ in
     + phaseNixDaemon
     + phaseCargoCache
     + phaseSSH
+    + phaseBanner
+    + phaseExec
   )
