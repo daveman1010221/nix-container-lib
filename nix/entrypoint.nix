@@ -269,8 +269,6 @@ let
       # Nix daemon disabled for this container mode (${cfg.mode})
     '';
 
-    '';
-
   # ---------------------------------------------------------------------------
   # Phase 5: Architecture self-configuration
   # ---------------------------------------------------------------------------
