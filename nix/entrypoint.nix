@@ -177,7 +177,12 @@ let
       # for llama-server so the container user can elevate for GPU access.
       SUDO_BIN=$(find /nix/store -name "sudo" -type f 2>/dev/null | head -1)
       if [[ -n "$SUDO_BIN" ]]; then
-        cp "$SUDO_BIN" /bin/sudo
+        # /bin/sudo may already exist as a symlink into the Nix store.
+        # Symlinks cannot have setuid set, so we must break the symlink
+        # by resolving and copying the real binary before chmod.
+        SUDO_REAL=$(readlink -f /bin/sudo 2>/dev/null || echo "$SUDO_BIN")
+        rm -f /bin/sudo
+        cp "$SUDO_REAL" /bin/sudo
         chown root:root /bin/sudo
         chmod 4755 /bin/sudo
         mkdir -p /etc/sudoers.d
