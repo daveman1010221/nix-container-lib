@@ -54,6 +54,7 @@ in defaults.ciContainer //
               "CI_FULL"
           ]
       }
+  , ai = None Lib.AiConfig    -- ← opt out explicitly
 
   -- CI containers typically do not need TLS unless your pipeline
   -- tests services that require it.

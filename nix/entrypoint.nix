@@ -161,6 +161,48 @@ let
     '';
 
   # ---------------------------------------------------------------------------
+  # Phase 3.2: AI tooling setup (optional)
+  # ---------------------------------------------------------------------------
+  phaseAiSetup =
+    if cfg.ai.enable or false
+    then ''
+      ##############################################################################
+      # AI tooling setup
+      ##############################################################################
+      # Models are volume-mounted at /opt/llama-models (read-only)
+      # Symlink into the user's home after it's been created
+      if [[ -d /opt/llama-models ]]; then
+        mkdir -p /home/$DEV_USER/.cache
+        ln -sfn /opt/llama-models /home/$DEV_USER/.cache/llama.cpp
+        chown -h "$DEV_UID:$DEV_GID" /home/$DEV_USER/.cache/llama.cpp
+      fi
+  
+      # Write pi agent models.json
+      PI_CONFIG_DIR="/home/$DEV_USER/.pi/agent"
+      mkdir -p "$PI_CONFIG_DIR"
+      cat > "$PI_CONFIG_DIR/models.json" << 'PIEOF'
+      {
+        "providers": {
+          "ollama": {
+            "baseUrl": "http://localhost:8080/v1",
+            "api": "openai-completions",
+            "apiKey": "dummy",
+            "compat": {
+              "supportsDeveloperRole": false,
+              "supportsReasoningEffort": false
+            },
+            "models": [
+              { "id": "local-model" }
+            ]
+          }
+        }
+      }
+      PIEOF
+      chown -R "$DEV_UID:$DEV_GID" "$PI_CONFIG_DIR"
+    ''
+    else "";
+
+  # ---------------------------------------------------------------------------
   # Phase 3.5: Sudo setup (optional — only when supplementalGroups present)
   # Sets up passwordless sudo for llama-server so the container user can
   # run GPU workloads that require uid 0 on the host KFD driver.
@@ -451,6 +493,7 @@ in
     phasePreamble
     + phaseStorePathExports
     + phaseUserCreation
+    + phaseAiSetup
     + phaseSudo
     + phaseArchConfig
     + phaseNixDaemon

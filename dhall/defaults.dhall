@@ -66,6 +66,12 @@ let defaultUser : T.UserConfig =
   , supplementalGroups   = [] : List { name : Text, gid : Natural }
   }
 
+let defaultAi : T.AiConfig =
+  { enable     = False
+  , modelsPath = "/opt/llama-models"
+  , llamaPort  = 8080
+  }
+
 -- ---------------------------------------------------------------------------
 -- Container archetypes
 -- ---------------------------------------------------------------------------
@@ -89,6 +95,7 @@ let devContainer : T.ContainerConfig =
   , nix      = defaultNix
   , user     = defaultUser
   , extraEnv = [] : List T.EnvVar
+  , ai       = None T.AiConfig
   }
 
 -- CI container: headless, pipeline-focused, no interactive shell.
@@ -153,4 +160,5 @@ in
   , defaultTLS         = defaultTLS
   , defaultSSH         = defaultSSH
   , defaultUser        = defaultUser
+  , defaultAi          = defaultAi
   }

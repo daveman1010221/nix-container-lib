@@ -220,6 +220,22 @@ let UserConfig =
   }
 
 -- ---------------------------------------------------------------------------
+-- AiConfig
+-- Local LLM tooling configuration.
+-- When enabled, the entrypoint symlinks modelsPath into the user's
+-- ~/.cache/llama.cpp and writes the pi agent models.json config.
+--
+--   enable      → whether to perform AI tooling setup at container start
+--   modelsPath  → container path where the models volume is mounted
+--   llamaPort   → port llama-server listens on
+-- ---------------------------------------------------------------------------
+let AiConfig =
+  { enable      : Bool
+  , modelsPath  : Text
+  , llamaPort   : Natural
+  }
+
+-- ---------------------------------------------------------------------------
 -- ContainerConfig
 -- The top-level type. This is what a project author writes.
 --
@@ -243,6 +259,7 @@ let ContainerConfig =
   , nix           : NixConfig
   , user          : UserConfig
   , extraEnv      : List EnvVar
+  , ai            : Optional AiConfig
   }
 
 -- ---------------------------------------------------------------------------
@@ -267,4 +284,5 @@ in
   , NixConfig       = NixConfig
   , UserConfig      = UserConfig
   , ContainerConfig = ContainerConfig
+  , AiConfig        = AiConfig
   }

@@ -262,8 +262,20 @@ let
     createUser         = cfg.user.createUser;
     defaultShell       = cfg.user.defaultShell;
     skeletonPath       = cfg.user.skeletonPath;
-    supplementalGroups = cfg.user.supplementalGroups;
+    supplementalGroups = cfg.user.supplementalGroups or [];
   };
+
+  # ---------------------------------------------------------------------------
+  # AI tooling translation
+  # ---------------------------------------------------------------------------
+  resolvedAi =
+      if !(cfg ? ai) || cfg.ai == null
+      then { enable = false; modelsPath = "/opt/llama-models"; llamaPort = 8080; }
+    else {
+      enable      = cfg.ai.enable;
+      modelsPath  = cfg.ai.modelsPath or "/opt/llama-models";
+      llamaPort   = cfg.ai.llamaPort  or 8080;
+    };
 
 in
   assert tlsAssertion;
@@ -293,4 +305,5 @@ in
     tls      = resolvedTLS;
     ssh      = resolvedSSH;
     user     = resolvedUser;
+    ai       = resolvedAi;
   }
