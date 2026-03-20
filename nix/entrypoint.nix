@@ -163,21 +163,30 @@ let
   # ---------------------------------------------------------------------------
   # Phase 3.2: AI tooling setup (optional)
   # ---------------------------------------------------------------------------
-phaseAiSetup =
+  phaseAiSetup =
     if cfg.ai.enable or false
     then ''
       ##############################################################################
       # AI tooling setup
       ##############################################################################
-      # Models are volume-mounted at /opt/llama-models (read-only)
-      # Symlink into the user's home after it's been created
+
+      # llama.cpp models — volume-mounted at /opt/llama-models
+      # Symlink into the user's cache after user is created
       if [[ -d /opt/llama-models ]]; then
         mkdir -p /home/$DEV_USER/.cache
         ln -sfn /opt/llama-models /home/$DEV_USER/.cache/llama.cpp
         chown -h "$DEV_UID:$DEV_GID" /home/$DEV_USER/.cache/llama.cpp
       fi
 
-      # Set LD_LIBRARY_PATH to include ollama's lib dir
+      # Ollama data — volume-mounted at /opt/ollama
+      # Symlink into the user's home after user is created
+      if [[ -d /opt/ollama ]]; then
+        ln -sfn /opt/ollama /home/$DEV_USER/.ollama
+        chown -h "$DEV_UID:$DEV_GID" /home/$DEV_USER/.ollama
+      fi
+
+      # Set LD_LIBRARY_PATH to include ollama's lib dir so libggml-cuda.so
+      # and libggml-base.so.0 are findable at runtime
       if command -v ollama >/dev/null 2>&1; then
         OLLAMA_BIN=$(readlink -f $(which ollama))
         OLLAMA_LIB=$(dirname "$OLLAMA_BIN")/../lib/ollama
@@ -188,7 +197,8 @@ phaseAiSetup =
         fi
       fi
 
-      # Include host NVIDIA driver libs if present
+      # Include host NVIDIA driver libs if present (NixOS: /run/opengl-driver/lib)
+      # Guard makes this a no-op on AMD/CPU systems
       if [[ -d /run/opengl-driver/lib ]]; then
         export LD_LIBRARY_PATH="/run/opengl-driver/lib:''${LD_LIBRARY_PATH:-}"
         echo "set -gx LD_LIBRARY_PATH /run/opengl-driver/lib \$LD_LIBRARY_PATH" \
