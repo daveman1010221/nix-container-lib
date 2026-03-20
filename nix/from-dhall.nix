@@ -122,8 +122,14 @@ let
   # StartTime  → start.sh exports (store-path-bearing or arch-sensitive)
   # UserProvided → documented but not emitted by the library; caller's concern
   # ---------------------------------------------------------------------------
+  resolvePlacement = placement: placement {
+    BuildTime    = "BuildTime";
+    StartTime    = "StartTime";
+    UserProvided = "UserProvided";
+  };
+  
   isPlacement = tag: ev:
-    ev.placement ? ${tag};
+    (resolvePlacement ev.placement) == tag;
 
   buildTimeEnv =
     map (ev: "${ev.name}=${ev.value}")
