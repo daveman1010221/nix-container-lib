@@ -177,16 +177,22 @@ phaseAiSetup =
         chown -h "$DEV_UID:$DEV_GID" /home/$DEV_USER/.cache/llama.cpp
       fi
 
-      # Set LD_LIBRARY_PATH to include ollama's lib dir so libggml-base.so.0
-      # and libggml-cuda.so are findable at runtime
+      # Set LD_LIBRARY_PATH to include ollama's lib dir
       if command -v ollama >/dev/null 2>&1; then
         OLLAMA_BIN=$(readlink -f $(which ollama))
         OLLAMA_LIB=$(dirname "$OLLAMA_BIN")/../lib/ollama
         if [[ -d "$OLLAMA_LIB" ]]; then
           export LD_LIBRARY_PATH="$OLLAMA_LIB:''${LD_LIBRARY_PATH:-}"
-          echo "export LD_LIBRARY_PATH=\"$OLLAMA_LIB:\$LD_LIBRARY_PATH\"" \
+          echo "set -gx LD_LIBRARY_PATH $OLLAMA_LIB \$LD_LIBRARY_PATH" \
             >> /home/$DEV_USER/.config/fish/config.fish
         fi
+      fi
+
+      # Include host NVIDIA driver libs if present
+      if [[ -d /run/opengl-driver/lib ]]; then
+        export LD_LIBRARY_PATH="/run/opengl-driver/lib:''${LD_LIBRARY_PATH:-}"
+        echo "set -gx LD_LIBRARY_PATH /run/opengl-driver/lib \$LD_LIBRARY_PATH" \
+          >> /home/$DEV_USER/.config/fish/config.fish
       fi
 
       # Write pi agent models.json
