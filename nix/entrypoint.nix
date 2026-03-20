@@ -163,7 +163,7 @@ let
   # ---------------------------------------------------------------------------
   # Phase 3.2: AI tooling setup (optional)
   # ---------------------------------------------------------------------------
-  phaseAiSetup =
+phaseAiSetup =
     if cfg.ai.enable or false
     then ''
       ##############################################################################
@@ -176,7 +176,19 @@ let
         ln -sfn /opt/llama-models /home/$DEV_USER/.cache/llama.cpp
         chown -h "$DEV_UID:$DEV_GID" /home/$DEV_USER/.cache/llama.cpp
       fi
-  
+
+      # Set LD_LIBRARY_PATH to include ollama's lib dir so libggml-base.so.0
+      # and libggml-cuda.so are findable at runtime
+      if command -v ollama >/dev/null 2>&1; then
+        OLLAMA_BIN=$(readlink -f $(which ollama))
+        OLLAMA_LIB=$(dirname "$OLLAMA_BIN")/../lib/ollama
+        if [[ -d "$OLLAMA_LIB" ]]; then
+          export LD_LIBRARY_PATH="$OLLAMA_LIB:''${LD_LIBRARY_PATH:-}"
+          echo "export LD_LIBRARY_PATH=\"$OLLAMA_LIB:\$LD_LIBRARY_PATH\"" \
+            >> /home/$DEV_USER/.config/fish/config.fish
+        fi
+      fi
+
       # Write pi agent models.json
       PI_CONFIG_DIR="/home/$DEV_USER/.pi/agent"
       mkdir -p "$PI_CONFIG_DIR"
