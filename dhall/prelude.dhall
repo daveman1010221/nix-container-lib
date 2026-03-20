@@ -38,6 +38,7 @@ in
   , BuildUserCount  = T.BuildUserCount
   , NixConfig       = T.NixConfig
   , UserConfig      = T.UserConfig
+  , AiConfig        = T.AiConfig
 
   -- ---------------------------------------------------------------------------
   -- Defaults (the opinionated starting points)
