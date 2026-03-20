@@ -185,6 +185,37 @@ let
         chown -h "$DEV_UID:$DEV_GID" /home/$DEV_USER/.ollama
       fi
 
+      # Pi agent state — volume-mounted at /opt/pi
+      # Symlink into the user's home after user is created
+      # models.json and sessions persist across container restarts
+      if [[ -d /opt/pi ]]; then
+        ln -sfn /opt/pi /home/$DEV_USER/.pi
+        chown -h "$DEV_UID:$DEV_GID" /home/$DEV_USER/.pi
+      else
+        # Fallback: write models.json ephemerally if no persistent volume
+        PI_CONFIG_DIR="/home/$DEV_USER/.pi/agent"
+        mkdir -p "$PI_CONFIG_DIR"
+        cat > "$PI_CONFIG_DIR/models.json" << 'PIEOF'
+      {
+        "providers": {
+          "ollama": {
+            "baseUrl": "http://localhost:8080/v1",
+            "api": "openai-completions",
+            "apiKey": "dummy",
+            "compat": {
+              "supportsDeveloperRole": false,
+              "supportsReasoningEffort": false
+            },
+            "models": [
+              { "id": "local-model" }
+            ]
+          }
+        }
+      }
+      PIEOF
+        chown -R "$DEV_UID:$DEV_GID" "$PI_CONFIG_DIR"
+      fi
+
       # Set LD_LIBRARY_PATH to include ollama's lib dir so libggml-cuda.so
       # and libggml-base.so.0 are findable at runtime
       if command -v ollama >/dev/null 2>&1; then
@@ -204,29 +235,6 @@ let
         echo "set -gx LD_LIBRARY_PATH /run/opengl-driver/lib \$LD_LIBRARY_PATH" \
           >> /home/$DEV_USER/.config/fish/config.fish
       fi
-
-      # Write pi agent models.json
-      PI_CONFIG_DIR="/home/$DEV_USER/.pi/agent"
-      mkdir -p "$PI_CONFIG_DIR"
-      cat > "$PI_CONFIG_DIR/models.json" << 'PIEOF'
-      {
-        "providers": {
-          "ollama": {
-            "baseUrl": "http://localhost:8080/v1",
-            "api": "openai-completions",
-            "apiKey": "dummy",
-            "compat": {
-              "supportsDeveloperRole": false,
-              "supportsReasoningEffort": false
-            },
-            "models": [
-              { "id": "local-model" }
-            ]
-          }
-        }
-      }
-      PIEOF
-      chown -R "$DEV_UID:$DEV_GID" "$PI_CONFIG_DIR"
     ''
     else "";
 
