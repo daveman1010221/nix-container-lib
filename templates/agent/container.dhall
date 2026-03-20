@@ -13,7 +13,7 @@
 -- agent container pattern matures. Use a Custom layer for agent-specific
 -- tooling in the meantime.
 
-let Lib      = (builtins.getFlake "polar-container-lib").dhall.prelude
+let Lib      = PRELUDE_PATH
 let defaults = Lib.defaults
 
 in defaults.agentContainer //

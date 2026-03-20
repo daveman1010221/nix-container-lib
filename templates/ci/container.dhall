@@ -11,7 +11,7 @@
 --     let pipeline = ./pipeline.dhall
 --   Or define it inline if this is a standalone CI container.
 
-let Lib      = (builtins.getFlake "polar-container-lib").dhall.prelude
+let Lib      = PRELUDE_PATH
 let defaults = Lib.defaults
 
 -- If you have a shared pipeline definition, import it:

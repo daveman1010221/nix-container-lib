@@ -17,7 +17,12 @@
 
         container = polar-container-lib.lib.${system}.mkContainer {
           inherit system pkgs inputs;
-          configPath = ./container.dhall;
+          configPath = pkgs.writeText "container.dhall" (
+            builtins.replaceStrings
+              [ "PRELUDE_PATH" ]
+              [ "${polar-container-lib}/dhall/prelude.dhall" ]
+              (builtins.readFile ./container.dhall)
+          );
         };
       in
       {
