@@ -507,6 +507,7 @@ let
         XDG_CACHE_HOME=/home/$DEV_USER/.cache \
         XDG_CONFIG_HOME=/home/$DEV_USER/.config \
         XDG_DATA_HOME=/home/$DEV_USER/.local/share \
+        ${lib.concatMapStrings (ev: "${ev.name}=${lib.escapeShellArg ev.value} \\\n    ") cfg.startTimeEnv}\
         chroot --userspec="$DEV_UID:$DEV_GID" / /bin/fish -l
     ''
     else if cfg.mode == "ci" || cfg.mode == "pipeline" then ''
