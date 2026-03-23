@@ -14,8 +14,10 @@
 --   CI       → headless, pipeline runner, minimal init, exit with code
 --   Agent    → supervised process, mTLS required, no interactive shell
 --   Pipeline → explicit pipeline runner mode, dev-adjacent but non-interactive
+--   Minimal  → single binary, exits when done, no start.sh machinery
+--              Cmd is set directly to the binary named in ContainerConfig.entrypoint
 -- ---------------------------------------------------------------------------
-let Mode = < Dev | CI | Agent | Pipeline >
+let Mode = < Dev | CI | Agent | Pipeline | Minimal >
 
 -- ---------------------------------------------------------------------------
 -- FailureMode
@@ -247,6 +249,22 @@ let AiConfig =
 --   - The //-style Dhall record override pattern works cleanly against
 --     the defaults in defaults.dhall:
 --       defaults.devContainer // { name = "my-project", ... }
+--
+-- New fields for Minimal mode:
+--
+--   entrypoint  → name of the binary to exec directly as Cmd.
+--                 The package providing this binary must be declared in
+--                 packageLayers (typically via a Custom layer).
+--                 Only used when mode = Minimal; ignored otherwise.
+--                 Example: Some "git-clone-entrypoint"
+--
+--   staticUid   → bake a specific UID into the image User field.
+--                 When set, overrides the runtime CREATE_USER mechanism.
+--                 Only meaningful for Minimal mode containers where the
+--                 process identity is fixed (e.g. a k8s init container
+--                 that always runs as UID 65532).
+--
+--   staticGid   → companion to staticUid.
 -- ---------------------------------------------------------------------------
 let ContainerConfig =
   { name          : Text
@@ -260,6 +278,9 @@ let ContainerConfig =
   , user          : UserConfig
   , extraEnv      : List EnvVar
   , ai            : Optional AiConfig
+  , entrypoint    : Optional Text
+  , staticUid     : Optional Natural
+  , staticGid     : Optional Natural
   }
 
 -- ---------------------------------------------------------------------------

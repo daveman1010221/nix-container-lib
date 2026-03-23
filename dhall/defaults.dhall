@@ -96,6 +96,9 @@ let devContainer : T.ContainerConfig =
   , user     = defaultUser
   , extraEnv = [] : List T.EnvVar
   , ai       = None T.AiConfig
+  , entrypoint = None Text
+  , staticUid  = None Natural
+  , staticGid  = None Natural
   }
 
 -- CI container: headless, pipeline-focused, no interactive shell.
@@ -113,6 +116,9 @@ let ciContainer : T.ContainerConfig =
   , shell = None T.ShellConfig
   , ssh   = None T.SSHConfig
   , user  = defaultUser // { createUser = False }
+  , entrypoint = None Text
+  , staticUid  = None Natural
+  , staticGid  = None Natural
   }
 
 -- Agent container: autonomous process runtime.
@@ -135,6 +141,9 @@ let agentContainer : T.ContainerConfig =
       -- Agents typically don't need to run builds; daemon is optional.
       -- Override to True in specific agent configs that do need it.
       { enableDaemon = False }
+  , entrypoint = None Text
+  , staticUid  = None Natural
+  , staticGid  = None Natural
   }
 
 -- Pipeline container: explicit pipeline runner, non-interactive.
@@ -145,6 +154,49 @@ let pipelineContainer : T.ContainerConfig =
   ciContainer //
   { name = "unnamed-pipeline"
   , mode = T.Mode.Pipeline
+  , entrypoint = None Text
+  , staticUid  = None Natural
+  , staticGid  = None Natural
+  }
+
+-- ---------------------------------------------------------------------------
+-- Minimal container archetype
+--
+-- For single-binary containers that exec one process and exit.
+-- The binary named in `entrypoint` is set directly as the OCI Cmd —
+-- no start.sh, no user creation, no nix daemon, no cargo cache.
+--
+-- Typical use: Kubernetes init containers, sidecar utilities, build tools.
+--
+-- Usage pattern:
+--   defaults.minimalContainer //
+--     { name       = "my-init-container"
+--     , entrypoint = Some "my-binary"
+--     , staticUid  = Some 65532
+--     , staticGid  = Some 65532
+--     , packageLayers =
+--         [ Lib.PackageLayer.Core
+--         , Lib.customLayer "my-binary"
+--             [ Lib.flakePackage "myInput" "packages.default" ]
+--         ]
+--     }
+-- ---------------------------------------------------------------------------
+let minimalContainer : T.ContainerConfig =
+  { name = "unnamed-minimal"
+  , mode = T.Mode.Minimal
+  , packageLayers =
+      [ T.PackageLayer.Core ]
+  , shell      = None T.ShellConfig
+  , pipeline   = None T.PipelineConfig
+  , ssh        = None T.SSHConfig
+  , tls        = None T.TLSConfig
+  , nix        = defaultNix // { enableDaemon = False }
+  , user       = defaultUser // { createUser = False }
+  , extraEnv   = [] : List T.EnvVar
+  , ai         = None T.AiConfig
+  , entrypoint = None Text
+  , staticUid  = None Natural
+  , staticGid  = None Natural
   }
 
 -- ---------------------------------------------------------------------------
@@ -155,6 +207,7 @@ in
   , ciContainer        = ciContainer
   , agentContainer     = agentContainer
   , pipelineContainer  = pipelineContainer
+  , minimalContainer   = minimalContainer
   , defaultShell       = defaultShell
   , defaultNix         = defaultNix
   , defaultTLS         = defaultTLS

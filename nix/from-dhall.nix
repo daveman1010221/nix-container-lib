@@ -32,6 +32,7 @@ let
     CI       = "ci";
     Agent    = "agent";
     Pipeline = "pipeline";
+    Minimal  = "minimal";
   };
 
   mode = resolveMode cfg.mode;
@@ -250,6 +251,12 @@ let
     then true
     else throw "from-dhall: ContainerConfig '${cfg.name}': packageLayers must include Core";
 
+  # Assertion: Minimal mode requires entrypoint to be set
+  minimalAssertion =
+    if mode == "minimal" && cfg.entrypoint == null
+    then throw "from-dhall: ContainerConfig '${cfg.name}': mode = Minimal requires entrypoint to be set"
+    else true;
+
   # ---------------------------------------------------------------------------
   # SSH translation
   # ---------------------------------------------------------------------------
@@ -283,9 +290,15 @@ let
       llamaPort   = cfg.ai.llamaPort  or 8080;
     };
 
+  # Minimal mode fields — null when not set
+  resolvedEntrypoint = cfg.entrypoint or null;
+  resolvedStaticUid  = cfg.staticUid  or null;
+  resolvedStaticGid  = cfg.staticGid  or null;
+
 in
   assert tlsAssertion;
   assert coreAssertion;
+  assert minimalAssertion;
 
   # ---------------------------------------------------------------------------
   # The translated configuration record.
@@ -312,4 +325,7 @@ in
     ssh      = resolvedSSH;
     user     = resolvedUser;
     ai       = resolvedAi;
+    entrypoint = resolvedEntrypoint;
+    staticUid = resolvedStaticUid;
+    staticGid = resolvedStaticGid;
   }
