@@ -94,8 +94,7 @@ let
   # The full set of derivations that need to be registered and protected.
   # ---------------------------------------------------------------------------
   allContents =
-    identity.baseInfo
-    ++ [ devEnv ]
+    [ devEnv ]
     ++ shellFiles
     ++ pipelineFiles
     ++ nixInfra.configFiles
@@ -106,8 +105,9 @@ let
     ]
     ++ lib.optional (tlsDerivation != null) tlsDerivation;
 
+  # Identity files registered separately for closure/GC but materialized via extraCommands
   closureInfo = pkgs.closureInfo {
-    rootPaths = allContents;
+    rootPaths = allContents ++ identity.baseInfo;
   };
 
   nixDbRegistration = pkgs.runCommand "nix-db-registration" {} ''
@@ -161,14 +161,12 @@ let
   # behavior regardless. start.sh overwrites these at runtime anyway.
   extraCommands = ''
     mkdir -p etc
-    cp ${identity.etcPasswd}/etc/passwd       etc/passwd
-    cp ${identity.etcShadow}/etc/shadow       etc/shadow
-    cp ${identity.etcGroup}/etc/group         etc/group
-    cp ${identity.etcGshadow}/etc/gshadow     etc/gshadow
-    cp ${identity.etcShells}/etc/shells       etc/shells
-    cp ${identity.etcOsRelease}/etc/os-release etc/os-release
-    chmod 644 etc/passwd etc/group etc/shells etc/os-release
-    chmod 640 etc/shadow etc/gshadow
+    install -m 644 ${identity.etcPasswd}/etc/passwd       etc/passwd
+    install -m 644 ${identity.etcGroup}/etc/group         etc/group
+    install -m 644 ${identity.etcShells}/etc/shells       etc/shells
+    install -m 644 ${identity.etcOsRelease}/etc/os-release etc/os-release
+    install -m 640 ${identity.etcShadow}/etc/shadow       etc/shadow
+    install -m 640 ${identity.etcGshadow}/etc/gshadow     etc/gshadow
   '';
 
     config = {
