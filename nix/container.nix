@@ -154,6 +154,23 @@ let
       allContents
       ++ [ nixDbRegistration gcRoots ];
 
+  # Materialize /etc identity files as real inodes rather than Nix store
+  # symlinks. nerdctl/runc performs a pre-entrypoint root filesystem check
+  # that rejects symlinks into the store for these files. Podman and Docker
+  # do not perform this check, but materializing real files is correct
+  # behavior regardless. start.sh overwrites these at runtime anyway.
+  extraCommands = ''
+    mkdir -p etc
+    cp ${identity.etcPasswd}/etc/passwd       etc/passwd
+    cp ${identity.etcShadow}/etc/shadow       etc/shadow
+    cp ${identity.etcGroup}/etc/group         etc/group
+    cp ${identity.etcGshadow}/etc/gshadow     etc/gshadow
+    cp ${identity.etcShells}/etc/shells       etc/shells
+    cp ${identity.etcOsRelease}/etc/os-release etc/os-release
+    chmod 644 etc/passwd etc/group etc/shells etc/os-release
+    chmod 640 etc/shadow etc/gshadow
+  '';
+
     config = {
       WorkingDir = "/workspace";
       Env        = standardBuildEnv;
