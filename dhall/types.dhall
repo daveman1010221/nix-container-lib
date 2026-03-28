@@ -78,7 +78,6 @@ let PipelineConfig =
       , artifactDir : Text
       , workingDir : Text
       , outputs : Optional PipelineOutputs
-      , scripts : PipelineScripts
       }
 
 let ShellConfig =
