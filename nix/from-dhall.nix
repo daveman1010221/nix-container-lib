@@ -1,3 +1,4 @@
+
 # polar-container-lib/nix/from-dhall.nix
 #
 # Bridges the Dhall ContainerConfig type to the Nix structures that the
@@ -6,13 +7,6 @@
 # This is the seam between the typed configuration layer (Dhall) and the
 # Nix implementation layer. It should contain NO policy — only translation.
 # Policy lives in the Dhall defaults and in the individual nix/* functions.
-#
-# Usage:
-#   let cfg = (pkgs.dhallToNix ./my-container.dhall).result;
-#   let translated = import ./from-dhall.nix { inherit pkgs cfg inputs; };
-#
-# The `inputs` argument carries flake inputs so PackageRef { flakeInput = Some "x" }
-# can be resolved to the correct derivation.
 
 { pkgs
 , cfg       # The Dhall ContainerConfig, evaluated to a Nix attrset
@@ -24,8 +18,6 @@ let
 
   # ---------------------------------------------------------------------------
   # Mode translation
-  # Dhall union tags arrive as attrsets: { Dev = null } | { CI = null } | ...
-  # We normalize to a simple string for downstream consumers.
   # ---------------------------------------------------------------------------
   resolveMode = mode: mode {
     Dev      = "dev";
@@ -39,9 +31,6 @@ let
 
   # ---------------------------------------------------------------------------
   # PackageRef resolution
-  # Resolves a { attrPath, flakeInput } to an actual derivation.
-  # attrPath is a dot-separated string: "llvmPackages_19.clang"
-  # flakeInput = null means nixpkgs; otherwise it names a flake input.
   # ---------------------------------------------------------------------------
   resolvePackageRef = ref:
     let
@@ -53,14 +42,12 @@ let
           in
             if inputs ? ${inputName}
             then
-              # Try .packages.${system} first, then the input root
               let inp = inputs.${inputName};
               in if inp ? packages && inp.packages ? ${pkgs.system}
                  then inp.packages.${pkgs.system}
                  else inp
             else throw "from-dhall: flake input '${inputName}' not found in inputs";
 
-      # Walk the dot-separated attrPath
       attrParts = lib.splitString "." ref.attrPath;
       resolved  = lib.getAttrFromPath attrParts source;
     in
@@ -68,30 +55,24 @@ let
 
   # ---------------------------------------------------------------------------
   # PackageLayer resolution
-  # Each named layer maps to the concrete package list defined in packages.nix.
-  # Custom layers are resolved by walking their PackageRef list.
   # ---------------------------------------------------------------------------
   packageSets = import ./packages.nix { inherit pkgs inputs; };
 
-  # Dhall unions compile to Nix as functions: PackageLayer.Core = (u: u.Core)
-  # To dispatch on which variant we have, apply the layer function to a
-  # handler record where each field returns a recognizable sentinel, then
-  # match on the result.
   resolveLayer = layer:
     let
       sentinel = layer {
-        Core     = "Core";
-        CI       = "CI";
-        Dev      = "Dev";
+        Core      = "Core";
+        CI        = "CI";
+        Dev       = "Dev";
         Toolchain = "Toolchain";
-        Pipeline = "Pipeline";
-        Agent    = "Agent";
-        Custom   = payload: { _custom = payload; };
+        Pipeline  = "Pipeline";
+        Agent     = "Agent";
+        Custom    = payload: { _custom = payload; };
       };
     in
-      if sentinel == "Core"     then packageSets.core
-      else if sentinel == "CI"  then packageSets.ci
-      else if sentinel == "Dev" then packageSets.dev
+      if sentinel == "Core"      then packageSets.core
+      else if sentinel == "CI"   then packageSets.ci
+      else if sentinel == "Dev"  then packageSets.dev
       else if sentinel == "Toolchain" then packageSets.toolchain
       else if sentinel == "Pipeline"  then packageSets.pipeline
       else if sentinel == "Agent"     then packageSets.agent
@@ -99,10 +80,6 @@ let
         map resolvePackageRef sentinel._custom.packages
       else throw "from-dhall: unknown PackageLayer variant";
 
-  # Flatten all resolved layers into a single deduplicated package list
-  # Deduplicate by outPath to avoid lib.unique's structural equality check.
-  # lib.unique deeply evaluates every element, triggering the NixOS module
-  # system on derivations like neovim that carry plugin configs as attributes.
   resolvedPackages =
     let
       allPkgs = lib.concatMap resolveLayer cfg.packageLayers;
@@ -110,7 +87,10 @@ let
         (acc: p:
           if acc.paths ? ${builtins.unsafeDiscardStringContext p.outPath}
           then acc
-          else { paths = acc.paths // { ${builtins.unsafeDiscardStringContext p.outPath} = true; }; list = acc.list ++ [ p ]; }
+          else {
+            paths = acc.paths // { ${builtins.unsafeDiscardStringContext p.outPath} = true; };
+            list = acc.list ++ [ p ];
+          }
         )
         { paths = {}; list = []; }
         allPkgs;
@@ -118,17 +98,13 @@ let
 
   # ---------------------------------------------------------------------------
   # EnvVar split
-  # Route extraEnv entries to their correct destination based on placement.
-  # BuildTime  → config.Env list  (safe: no store paths)
-  # StartTime  → start.sh exports (store-path-bearing or arch-sensitive)
-  # UserProvided → documented but not emitted by the library; caller's concern
   # ---------------------------------------------------------------------------
   resolvePlacement = placement: placement {
     BuildTime    = "BuildTime";
     StartTime    = "StartTime";
     UserProvided = "UserProvided";
   };
-  
+
   isPlacement = tag: ev:
     (resolvePlacement ev.placement) == tag;
 
@@ -141,8 +117,6 @@ let
 
   # ---------------------------------------------------------------------------
   # Shell config translation
-  # Optional ShellConfig → the arguments interactiveShellInit.nix expects.
-  # Returns null when shell = None, signalling no shell setup required.
   # ---------------------------------------------------------------------------
   resolveShell =
     if cfg.shell == null
@@ -158,8 +132,6 @@ let
 
   # ---------------------------------------------------------------------------
   # NixConfig translation
-  # Produces the fragments that become /etc/nix/nix.conf entries and the
-  # runtime arch-detection block in start.sh.
   # ---------------------------------------------------------------------------
   resolveSandboxPolicy = policy: policy {
     Enabled  = "enabled";
@@ -181,42 +153,91 @@ let
 
   # ---------------------------------------------------------------------------
   # Pipeline translation
-  # Optional PipelineConfig → the arguments pipeline.nix expects.
   # ---------------------------------------------------------------------------
   resolveFailureMode = fm: fm {
     FailFast = "fail-fast";
     Collect  = "collect";
   };
 
+  # StageInput union → Nix record
+  # Each variant maps to the record shape that pipeline.nix's mapStageInput expects.
   resolveStageInput = si: si {
     Workspace   = { type = "workspace"; };
+    Lockfile    = { type = "lockfile"; };
+    Toolchain   = { type = "toolchain"; };
     Artifact    = name: { type = "artifact"; inherit name; };
-    Environment = { type = "environment"; };
+    StageOutput = payload: {
+      type     = "artifact";
+      name     = payload.artifact;
+      stage    = payload.stage;
+    };
+    Environment = payload: {
+      type        = "environment";
+      name        = payload.name;
+      description = payload.description;
+    };
   };
 
+  # StageOutput union → Nix record
   resolveStageOutput = so: so {
-    Artifact = name: { type = "artifact"; inherit name; };
-    Report   = { type = "report"; };
-    None     = { type = "none"; };
+    Artifact = payload: {
+      type = "artifact";
+      name = payload.name;
+    } // (lib.optionalAttrs (payload.content_type != null) {
+      content_type = payload.content_type;
+    });
+    Assertion = payload: {
+      type = "assertion";
+      name = payload.name;
+    } // (lib.optionalAttrs (payload.description != null) {
+      description = payload.description;
+    });
+    Report = payload: {
+      type = "report";
+    } // (lib.optionalAttrs (payload.name != null) {
+      name = payload.name;
+    });
+    None = { type = "none"; };
   };
 
   resolveStage = stage: {
-    name        = stage.name;
-    command     = stage.command;
-    failureMode = resolveFailureMode stage.failureMode;
-    inputs      = map resolveStageInput stage.inputs;
-    outputs     = map resolveStageOutput stage.outputs;
-    condition   = stage.condition; # null or string
+    name            = stage.name;
+    command         = stage.command;
+    failureMode     = resolveFailureMode stage.failureMode;
+    condition       = stage.condition;
+    pure            = stage.pure;
+    impurityReason  = stage.impurityReason;
+    inputs          = map resolveStageInput stage.inputs;
+    outputs         = map resolveStageOutput stage.outputs;
   };
+
+  # PipelineOutputs translation
+  resolvePipelineOutputs = outputs:
+    if outputs == null
+    then null
+    else {
+      artifacts = map (a: {
+        name         = a.name;
+        fromStage    = a.fromStage;
+        artifact     = a.artifact;
+        attestation  = a.attestation;
+        verifyMethod = a.verifyMethod;
+      }) outputs.artifacts;
+      assertions = map (a: {
+        name      = a.name;
+        fromStage = a.fromStage;
+      }) outputs.assertions;
+    };
 
   resolvedPipeline =
     if cfg.pipeline == null
     then null
     else {
       name        = cfg.pipeline.name;
-      stages      = map resolveStage cfg.pipeline.stages;
       artifactDir = cfg.pipeline.artifactDir;
       workingDir  = cfg.pipeline.workingDir or "/workspace";
+      stages      = map resolveStage cfg.pipeline.stages;
+      outputs     = resolvePipelineOutputs (cfg.pipeline.outputs or null);
     };
 
   # ---------------------------------------------------------------------------
@@ -228,10 +249,9 @@ let
     else {
       enable        = cfg.tls.enable;
       generateCerts = cfg.tls.generateCerts;
-      certsPath     = cfg.tls.certsPath; # null or string
+      certsPath     = cfg.tls.certsPath;
     };
 
-  # Assertion: generateCerts = true and certsPath set is a configuration error
   tlsAssertion =
     if resolvedTLS != null
        && resolvedTLS.generateCerts
@@ -239,7 +259,6 @@ let
     then throw "from-dhall: TLSConfig error: generateCerts = true and certsPath is set. Choose one."
     else true;
 
-  # Assertion: Core layer must be present
   coreAssertion =
     let
       isCore = layer: (layer {
@@ -251,7 +270,6 @@ let
     then true
     else throw "from-dhall: ContainerConfig '${cfg.name}': packageLayers must include Core";
 
-  # Assertion: Minimal mode requires entrypoint to be set
   minimalAssertion =
     if mode == "minimal" && cfg.entrypoint == null
     then throw "from-dhall: ContainerConfig '${cfg.name}': mode = Minimal requires entrypoint to be set"
@@ -282,15 +300,14 @@ let
   # AI tooling translation
   # ---------------------------------------------------------------------------
   resolvedAi =
-      if !(cfg ? ai) || cfg.ai == null
-      then { enable = false; modelsPath = "/opt/llama-models"; llamaPort = 8080; }
+    if !(cfg ? ai) || cfg.ai == null
+    then { enable = false; modelsPath = "/opt/llama-models"; llamaPort = 8080; }
     else {
-      enable      = cfg.ai.enable;
-      modelsPath  = cfg.ai.modelsPath or "/opt/llama-models";
-      llamaPort   = cfg.ai.llamaPort  or 8080;
+      enable     = cfg.ai.enable;
+      modelsPath = cfg.ai.modelsPath or "/opt/llama-models";
+      llamaPort  = cfg.ai.llamaPort  or 8080;
     };
 
-  # Minimal mode fields — null when not set
   resolvedEntrypoint = cfg.entrypoint or null;
   resolvedStaticUid  = cfg.staticUid  or null;
   resolvedStaticGid  = cfg.staticGid  or null;
@@ -300,32 +317,21 @@ in
   assert coreAssertion;
   assert minimalAssertion;
 
-  # ---------------------------------------------------------------------------
-  # The translated configuration record.
-  # This is what container.nix, entrypoint.nix, shell.nix, etc. consume.
-  # Each downstream function receives only the slice it needs.
-  # ---------------------------------------------------------------------------
   {
-    # Scalar metadata
     name = cfg.name;
     mode = mode;
 
-    # Resolved package list (flat, deduplicated)
     packages = resolvedPackages;
-
-    # Environment variable split
-    buildTimeEnv = buildTimeEnv;   # List of "NAME=value" strings → config.Env
-    startTimeEnv = startTimeEnv;   # List of EnvVar records → start.sh exports
-
-    # Subsystem configs (null = disabled)
-    shell    = resolveShell;
-    nix      = resolvedNix;
-    pipeline = resolvedPipeline;
-    tls      = resolvedTLS;
-    ssh      = resolvedSSH;
-    user     = resolvedUser;
-    ai       = resolvedAi;
+    buildTimeEnv = buildTimeEnv;
+    startTimeEnv = startTimeEnv;
+    shell      = resolveShell;
+    nix        = resolvedNix;
+    pipeline   = resolvedPipeline;
+    tls        = resolvedTLS;
+    ssh        = resolvedSSH;
+    user       = resolvedUser;
+    ai         = resolvedAi;
     entrypoint = resolvedEntrypoint;
-    staticUid = resolvedStaticUid;
-    staticGid = resolvedStaticGid;
+    staticUid  = resolvedStaticUid;
+    staticGid  = resolvedStaticGid;
   }

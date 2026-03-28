@@ -1,63 +1,77 @@
+
 -- container.dhall
--- CI container configuration for my-project.
+-- CI container configuration for a Rust project.
 --
--- This container shares its pipeline definition with the dev container.
--- That identity is the guarantee: what runs in CI is exactly what the
--- developer can run locally. Do not create a separate pipeline here.
--- Import the shared pipeline definition instead.
+-- This produces a pipeline container that runs quality gates, builds
+-- binaries with attested provenance, and optionally pushes OCI images.
+-- The derivation-style manifest pins all inputs at runtime so the build
+-- is reproducible: same container image + same source = same outputs
+-- for all pure stages.
 --
--- Typical usage:
---   Import the pipeline from a shared file:
---     let pipeline = ./pipeline.dhall
---   Or define it inline if this is a standalone CI container.
+-- The Toolchain layer is included because this pipeline compiles Rust.
+-- If your pipeline only runs pre-built tools (linting configs, SBOM
+-- scanners), drop Toolchain and the build/push stages.
 
 let Lib      = PRELUDE_PATH
 let defaults = Lib.defaults
 
--- If you have a shared pipeline definition, import it:
--- let sharedPipeline = ./pipeline.dhall
+let FailureMode = Lib.FailureMode
+let Input       = Lib.StageInput
+let Output      = Lib.StageOutput
 
-in defaults.ciContainer //
+let artifactDir = "/workspace/pipeline-out"
+
+in defaults.pipelineContainer //
   { name = "my-project-ci"
-
   , packageLayers =
       [ Lib.PackageLayer.Core
       , Lib.PackageLayer.CI
       , Lib.PackageLayer.Pipeline
-
-      -- Add only what CI genuinely needs beyond the standard CI layer.
-      -- Do NOT add Dev or Toolchain unless your pipeline builds code.
-      -- , Lib.PackageLayer.Toolchain
       ]
-
   , pipeline = Some
       { name        = "my-project-pipeline"
-      , artifactDir = "/workspace/pipeline-out"
-      , stages      =
-          -- In CI all stages run, including those gated on CI_FULL.
-          -- Invoke as: CI_FULL=1 pipeline-runner
-          [ Lib.simpleStage "fmt"  "cargo fmt --check"           Lib.FailureMode.FailFast
-          , Lib.simpleStage "lint" "cargo clippy -- -D warnings" Lib.FailureMode.FailFast
-
-          , { name        = "audit"
-            , command     = "run-audit"
-            , failureMode = Lib.FailureMode.Collect
-            , inputs      = [ Lib.StageInput.Workspace ]
-            , outputs     = [ Lib.StageOutput.Report ]
-            , condition   = None Text
+      , artifactDir
+      , workingDir  = "/workspace/src"
+      , scripts     = defaults.defaultPipelineScripts
+      , outputs     = Some
+          { artifacts =
+              [ { name         = "binaries"
+                , fromStage    = "build"
+                , artifact     = "bin"
+                , attestation  = Some "build-manifest.json"
+                , verifyMethod = Some "Recompute binding hash from input pins + binary hash"
+                }
+              ]
+          , assertions =
+              [ { name = "formatted",  fromStage = "fmt" }
+              , { name = "lint-clean", fromStage = "lint" }
+              , { name = "tests-pass", fromStage = "test-unit" }
+              , { name = "audit-clean", fromStage = "audit" }
+              ]
+          }
+      , stages =
+          [ { name           = "fmt"
+            , command        = "cargo fmt --check"
+            , failureMode    = FailureMode.Collect
+            , condition      = None Text
+            , pure           = True
+            , impurityReason = None Text
+            , inputs         = [ Input.Workspace ]
+            , outputs        = [ Output.Assertion { name = "formatted", description = Some "Source passes rustfmt" } ]
             }
-
-          , Lib.conditionalStage
-              "test"
-              "cargo test --workspace"
-              Lib.FailureMode.FailFast
-              "CI_FULL"
+          , { name           = "build"
+            , command        = "nu /etc/pipeline/cargo-attested-build.nu --release --artifact-dir ${artifactDir}"
+            , failureMode    = FailureMode.FailFast
+            , condition      = Some "previous_success"
+            , pure           = True
+            , impurityReason = None Text
+            , inputs         = [ Input.Workspace, Input.Lockfile, Input.Toolchain ]
+            , outputs        =
+                [ Output.Artifact { name = "bin", content_type = Some "elf-binary-set" }
+                , Output.Artifact { name = "build-manifest.json", content_type = Some "attestation-manifest" }
+                ]
+            }
           ]
       }
-  , ai = None Lib.AiConfig    -- ← opt out explicitly
-
-  -- CI containers typically do not need TLS unless your pipeline
-  -- tests services that require it.
-  -- , tls = Some (defaults.defaultTLS // { generateCerts = True })
+  , ai = None Lib.AiConfig
   }
-

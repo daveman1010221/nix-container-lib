@@ -48,7 +48,7 @@ in
   # ---------------------------------------------------------------------------
   # Core
   # Minimum viable Linux container. Every container gets this.
-  # Includes: init essentials, SSL, nix, coreutils, basic shell.
+  # Includes: init essentials, SSL, nix, coreutils, shells.
   # Does NOT include: editors, compilers, interactive tools.
   # ---------------------------------------------------------------------------
   core = with pkgs; [
@@ -57,6 +57,7 @@ in
     coreutils
     findutils
     fish
+    nushell
     getent
     glibcLocalesUtf8
     gnutar

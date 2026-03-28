@@ -10,10 +10,10 @@
     polar-container-lib.inputs.flake-utils.follows  = "flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils, polar-container-lib, ... } @ inputs:
+  outputs = { self, nixpkgs, flake-utils, polar-container-lib, rust-overlay, ... } @ inputs:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = import nixpkgs { inherit system; };
+        pkgs = import nixpkgs { inherit system; overlays = [ rust-overlay.overlays.default ]; };
 
         container = polar-container-lib.lib.${system}.mkContainer {
           inherit system pkgs inputs;
@@ -35,4 +35,3 @@
       }
     );
 }
-

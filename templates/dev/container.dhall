@@ -5,8 +5,14 @@
 -- Full type reference: polar-container-lib/dhall/types.dhall
 -- Available defaults:  polar-container-lib/dhall/defaults.dhall
 
+--let Lib      = ../../dhall/prelude.dhall
 let Lib      = PRELUDE_PATH
 let defaults = Lib.defaults
+
+let FailureMode = Lib.FailureMode
+let Input       = Lib.StageInput
+let Output      = Lib.StageOutput
+
 
 in defaults.devContainer //
   { name = "my-project-dev"
@@ -30,24 +36,48 @@ in defaults.devContainer //
   -- Define your pipeline stages.
   -- Remove this block entirely if you don't need a pipeline.
   , pipeline = Some
-      { name        = "my-project-pipeline"
-      , artifactDir = "/workspace/pipeline-out"
-      , stages      =
-          -- Fast gates: fail immediately on error
-          [ Lib.simpleStage "fmt"  "cargo fmt --check"           Lib.FailureMode.FailFast
-          , Lib.simpleStage "lint" "cargo clippy -- -D warnings" Lib.FailureMode.FailFast
-
-          -- Full test suite: only runs when CI_FULL is set
-          -- Developer: pipeline-runner           (skips this stage)
-          -- CI server: CI_FULL=1 pipeline-runner (runs this stage)
-          , Lib.conditionalStage
-              "test"
-              "cargo test --workspace"
-              Lib.FailureMode.FailFast
-              "CI_FULL"
-          ]
-      }
-
+        { name        = "my-project-pipeline"
+        , artifactDir = "/workspace/pipeline-out"
+        , workingDir  = "/workspace/src"
+        , outputs     = Some
+            { artifacts =
+                [ { name         = "binaries"
+                  , fromStage    = "build"
+                  , artifact     = "bin"
+                  , attestation  = Some "build-manifest.json"
+                  , verifyMethod = Some "Recompute binding hash from input pins + binary hash"
+                  }
+                ]
+            , assertions =
+                [ { name = "formatted",  fromStage = "fmt" }
+                , { name = "lint-clean", fromStage = "lint" }
+                , { name = "tests-pass", fromStage = "test-unit" }
+                , { name = "audit-clean", fromStage = "audit" }
+                ]
+            }
+        , stages =
+            [ { name           = "fmt"
+              , command        = "cargo fmt --check"
+              , failureMode    = FailureMode.Collect
+              , condition      = None Text
+              , pure           = True
+              , impurityReason = None Text
+              , inputs         = [ Input.Workspace ]
+              , outputs        = [ Output.Assertion { name = "formatted", description = Some "Source passes rustfmt" } ]
+              }
+            , { name           = "build"
+              , command        = "cargo build --workspace --locked"
+              , failureMode    = FailureMode.FailFast
+              , condition      = Some "previous_success"
+              , pure           = True
+              , impurityReason = None Text
+              , inputs         = [ Input.Workspace, Input.Lockfile, Input.Toolchain ]
+              , outputs        =
+                  [ Output.Artifact { name = "bin", content_type = Some "elf-binary-set" }
+                  ]
+              }
+            ]
+        }
   -- TLS: uncomment to enable mTLS certificate generation
   -- , tls = Some (defaults.defaultTLS // { generateCerts = True })
 
@@ -61,4 +91,3 @@ in defaults.devContainer //
       [ Lib.buildEnv "MY_PROJECT_ENV" "development"
       ]
   }
-

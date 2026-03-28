@@ -1,96 +1,170 @@
+
 # polar-container-lib/nix/pipeline.nix
 #
-# Produces two derivations for inclusion in image contents:
+# Produces derivations for inclusion in pipeline container images:
 #
-#   pipelineManifest  → /etc/pipeline/pipeline.json
-#   pipelineRunner    → /bin/pipeline-runner
+#   pipelineManifest   → /etc/pipeline/pipeline.json          (derivation-style)
+#   toolchainManifest  → /etc/pipeline/toolchain.json         (store path inventory)
+#   pipelineRunner     → /etc/pipeline/pipeline_runner.nu     (nushell runner)
+#   attestedBuild      → /etc/pipeline/cargo-attested-build.nu
+#   entrypoint         → /bin/pipeline-runner                 (thin wrapper)
 #
-# The manifest is the authoritative record of what this container's pipeline
-# does. It is human-readable, inspectable with jq, and is the single source
-# of truth the runner reads at execution time. Baking it into the image at
-# build time means the pipeline definition and the tools that execute it
-# are always in sync — there is no external config file to drift.
+# CONTRACT
+# --------
+# Called by container.nix with { pkgs, cfg } — same as every other module.
+# cfg.packages is the fully-resolved package list (Core + CI + Toolchain + Pipeline
+# + extraPackages, already composed by from-dhall.nix). cfg.pipeline is the
+# pipeline definition from the Dhall config.
 #
-# The runner is a shell script that:
-#   1. Reads the manifest via jq
-#   2. Filters stages by condition (skips stages whose condition env var is unset)
-#   3. Executes each stage in order
-#   4. Applies the correct failure mode (FailFast or Collect)
-#   5. Writes a summary report to the artifact directory
-#   6. Exits with a non-zero code if any stage failed
+# This module does NOT select packages — packages.nix and the Dhall config do that.
+# What this module does is:
+#   1. Introspect cfg.packages to build a toolchain manifest (store paths + versions)
+#   2. Generate the derivation-style pipeline manifest with input pin slots
+#   3. Import the nushell runner and attested build scripts from the source tree
+#   4. Wire up the entrypoint
 #
-# INVOCATION
-# ----------
-#   pipeline-runner             — run all non-gated stages
-#   pipeline-runner all         — same as above (explicit)
-#   pipeline-runner <stage>     — run a single named stage
-#   CI_FULL=1 pipeline-runner   — run all stages including conditioned ones
-#
-# FAILURE SEMANTICS
-# -----------------
-#   FailFast  → non-zero exit from stage aborts the runner immediately.
-#               Remaining stages do not run. Exit code mirrors the stage.
-#
-#   Collect   → non-zero exit from stage is recorded but execution continues.
-#               All stages run. Runner exits non-zero at the end if any
-#               stage failed. This is the right mode for analysis and audit
-#               tools where you want the full picture, not just the first
-#               finding.
-#
-# ARTIFACT DIRECTORY
+# TOOLCHAIN MANIFEST
 # ------------------
-# Each stage run produces a result file in the artifact directory:
-#   <artifactDir>/<stage-name>.exit     — exit code
-#   <artifactDir>/<stage-name>.log      — stdout + stderr
-#   <artifactDir>/summary.json          — machine-readable run summary
-#   <artifactDir>/summary.txt           — human-readable run summary
+# toolchain.json records the Nix store path of every package in cfg.packages.
+# This is NOT a package selection mechanism — it's an introspection of what
+# was already selected. The runner reads it at startup and hashes it to produce
+# the toolchain input pin. A verifier can compare these store paths against
+# a rebuild from the same flake.lock to confirm the pipeline ran with the
+# expected tools.
 #
-# CONDITION GATES
+# MANIFEST FORMAT
 # ---------------
-# A stage with condition = Some "CI_FULL" is skipped unless the env var
-# CI_FULL is set in the environment. This implements the "developer runs
-# fast stages, CI runs everything" invariant without two pipeline definitions.
-# The condition value is the name of the env var to check, not a shell
-# expression — this is intentional. Complex conditions belong in the stage
-# command itself, not in the pipeline definition.
+# The pipeline manifest follows the "derivation-style" pattern:
+#   - Top-level `inputs` with `pin: null` slots (filled at runtime by the runner)
+#   - Stages reference inputs by name via { ref: "source" }
+#   - Each stage declares `pure: true|false`
+#   - Cross-stage artifact references via { type: "stage-output", stage, artifact }
+#   - Reproducibility metadata auto-collected from stage purity flags
 
 { pkgs
-, cfg     # Translated config from from-dhall.nix
+, cfg
 }:
 
 let
   lib = pkgs.lib;
   pipeline = cfg.pipeline;  # guaranteed non-null by caller (container.nix)
 
+
+
+
   # ---------------------------------------------------------------------------
-  # Pipeline manifest (JSON)
+  # Toolchain manifest
   #
-  # Serializes the full pipeline definition to JSON for runtime consumption
-  # and human inspection. The structure mirrors the Dhall PipelineConfig
-  # type closely so that reading the JSON feels familiar to anyone who has
-  # read the Dhall types.
-  #
-  # Stage inputs/outputs are included for documentation purposes — the runner
-  # does not currently enforce them, but they are available for future tooling
-  # (dependency analysis, parallelism, artifact tracking).
+  # Walks cfg.packages and records each derivation's store path, name, and
+  # version. This captures the exact closure that container.nix assembled —
+  # no separate tool list to maintain.
   # ---------------------------------------------------------------------------
+
+  toolchainEntries = map (drv:
+    let
+      name = drv.pname or drv.name or "unknown";
+      version = drv.version or null;
+    in {
+      inherit name version;
+      store_path = "${drv}";
+    }
+  ) cfg.packages;
+
+  toolchainData = {
+    packages = toolchainEntries;
+    _meta = {
+      package_count = builtins.length cfg.packages;
+      generated_by  = "polar-container-lib/nix/pipeline.nix";
+    };
+  };
+
+  toolchainManifest = pkgs.writeTextFile {
+    name        = "toolchain.json";
+    destination = "/etc/pipeline/toolchain.json";
+    text        = builtins.toJSON toolchainData;
+  };
+
+  # ---------------------------------------------------------------------------
+  # Pipeline manifest (derivation-style JSON)
+  # ---------------------------------------------------------------------------
+
+  mapStageInput = i:
+    if i.type == "workspace"    then { ref = "source"; }
+    else if i.type == "lockfile"  then { ref = "lockfile"; }
+    else if i.type == "toolchain" then { ref = "toolchain"; }
+    else if i.type == "artifact"  then
+      if i ? stage
+      then { type = "stage-output"; stage = i.stage; artifact = i.name; }
+      else { ref = i.name; }
+    else if i.type == "environment" then {
+      type = "environment";
+      name = i.name or "unnamed";
+      description = i.description or "";
+    }
+    else { ref = i.type; };
+
+  mapStageOutput = o:
+    if o.type == "artifact" then
+      { type = "artifact"; name = o.name; }
+      // (lib.optionalAttrs (o ? content_type) { content_type = o.content_type; })
+    else if o.type == "assertion" then
+      { type = "assertion"; name = o.name or "unnamed"; }
+      // (lib.optionalAttrs (o ? description) { description = o.description; })
+    else if o.type == "report" then
+      { type = "report"; }
+      // (lib.optionalAttrs (o ? name) { name = o.name; })
+    else
+      { type = "none"; };
+
   manifestData = {
+    "$schema"   = "polar.pipeline/v1";
     name        = pipeline.name;
     artifactDir = pipeline.artifactDir;
     workingDir  = pipeline.workingDir;
-    stages      = map (stage: {
-      inherit (stage) name command failureMode condition;
-      inputs  = map (i:
-        if i.type == "workspace"    then { type = "workspace"; }
-        else if i.type == "artifact" then { type = "artifact"; name = i.name; }
-        else                             { type = "environment"; }
-      ) stage.inputs;
-      outputs = map (o:
-        if o.type == "artifact" then { type = "artifact"; name = o.name; }
-        else if o.type == "report" then { type = "report"; }
-        else                          { type = "none"; }
-      ) stage.outputs;
-    }) pipeline.stages;
+
+    # Top-level input declarations. Pins are null at image build time —
+    # the runner fills them at execution time from the actual filesystem.
+    inputs = {
+      source = {
+        type = "git-tree";
+        description = "Workspace source tree, pinned by git tree hash";
+        pin = null;
+      };
+      toolchain = {
+        type = "nix-closure";
+        description = "Build environment, pinned by toolchain.json content hash";
+        pin = null;
+      };
+      lockfile = {
+        type = "file";
+        path = "Cargo.lock";
+        description = "Dependency resolution, pinned by content hash";
+        pin = null;
+      };
+    };
+
+    stages = map (stage:
+      {
+        inherit (stage) name command failureMode condition;
+        pure    = stage.pure or true;
+        inputs  = map mapStageInput stage.inputs;
+        outputs = map mapStageOutput stage.outputs;
+      }
+      // (lib.optionalAttrs (stage ? impurity_reason) {
+        impurity_reason = stage.impurity_reason;
+      })
+    ) pipeline.stages;
+
+    # Pipeline-level output declarations (if specified in Dhall config).
+    outputs = lib.optionalAttrs (pipeline ? outputs) pipeline.outputs;
+
+    reproducibility = {
+      strategy = "content-addressed-inputs";
+      known_impurities = lib.pipe pipeline.stages [
+        (builtins.filter (s: !(s.pure or true)))
+        (map (s: "${s.name}: ${s.impurity_reason or "unspecified"}"))
+      ];
+    };
   };
 
   pipelineManifest = pkgs.writeTextFile {
@@ -100,190 +174,64 @@ let
   };
 
   # ---------------------------------------------------------------------------
-  # Pipeline runner script
+  # Pipeline runner (nushell — imported from source tree)
   #
-  # Reads /etc/pipeline/pipeline.json and executes stages.
-  # jq is used for all JSON parsing — it is always present in the CI layer.
+  # The runner is a normal file in the repo at scripts/pipeline_runner.nu.
+  # Nix reads it at build time.
+  # Edit it with syntax highlighting and tooling — no inline
+  # heredoc nonsense.
   #
-  # The script uses a local variable `failures` (an array of stage names)
-  # to track Collect-mode failures, and `exit_code` to accumulate the
-  # final exit status.
+  # If the .nu files don't exist yet (bootstrapping), fall back to a stub
+  # that prints an error. This prevents the Nix build from failing during
+  # the transition period.
   # ---------------------------------------------------------------------------
-  runnerScript = ''
-    #!/usr/bin/env bash
-    set -uo pipefail
-    # Note: -e is intentionally omitted. We handle errors explicitly so that
-    # Collect-mode stages can fail without aborting the runner.
 
-    ##############################################################################
-    # Configuration
-    ##############################################################################
-    MANIFEST="/etc/pipeline/pipeline.json"
-    PIPELINE_NAME=$(jq -r '.name' "$MANIFEST")
-    ARTIFACT_DIR=$(jq -r '.artifactDir' "$MANIFEST")
-    WORKING_DIR=$(jq -r '.workingDir' "$MANIFEST")
-    TARGET_STAGE="''${1:-all}"
+  runnerSource =
+    let path = ./scripts/pipeline_runner.nu;
+    in if builtins.pathExists path
+       then builtins.readFile path
+       else ''
+         #!/usr/bin/env nu
+         print "[pipeline_runner] ERROR: runner script not found at build time"
+         print "[pipeline_runner] Expected: ${toString path}"
+         print "[pipeline_runner] This is a stub — the real runner has not been baked in."
+         exit 1
+       '';
 
-    mkdir -p "$ARTIFACT_DIR"
 
-    ##############################################################################
-    # Helpers
-    ##############################################################################
-    log()  { echo "[pipeline] $*"; }
-    fail() { echo "[pipeline] ERROR: $*" >&2; exit 1; }
 
-    # Test whether a stage's condition is satisfied.
-    # condition is null (always run) or a string (env var name that must be set).
-    condition_satisfied() {
-      local condition="$1"
-      if [ "$condition" = "null" ] || [ -z "$condition" ]; then
-        return 0  # no condition — always run
-      fi
-      # Check if the named env var is set and non-empty
-      if [ -n "''${!condition:-}" ]; then
-        return 0  # condition satisfied
-      fi
-      return 1  # condition not satisfied — skip stage
-    }
+  pipelineRunner = pkgs.writeTextFile {
+    name        = "pipeline_runner.nu";
+    destination = "/etc/pipeline/pipeline_runner.nu";
+    text        = runnerSource;
+    executable  = true;
+  };
 
-    # Run a single stage. Returns the stage's exit code.
-    run_stage() {
-      local name="$1"
-      local command="$2"
-      local failure_mode="$3"
 
-      log "━━━━ Stage: $name ━━━━"
-      log "Command: $command"
+  # ---------------------------------------------------------------------------
+  # Entrypoint wrapper
+  #
+  # Thin shell script at /bin/pipeline-runner that execs nushell with the
+  # runner. The orchestrator's k8s Job can specify command args that pass
+  # through (manifest path, target stage).
+  # ---------------------------------------------------------------------------
 
-      local log_file="$ARTIFACT_DIR/$name.log"
-      local exit_file="$ARTIFACT_DIR/$name.exit"
+  # Find nushell in cfg.packages. If it's not there (shouldn't happen for
+  # pipeline containers, but defensive), fall back to PATH lookup.
+  nuBin =
+    let
+      nuPkg = lib.findFirst
+        (p: (p.pname or "") == "nushell" || (p.name or "") == "nushell")
+        null
+        cfg.packages;
+    in
+      if nuPkg != null
+      then "${nuPkg}/bin/nu"
+      else "/bin/nu";
 
-      # Run the stage command in the configured working directory
-      local work_dir
-      work_dir=$(jq -r '.workingDir' "$MANIFEST")
-      (cd "$work_dir" && eval "$command") 2>&1 | tee "$log_file"
-      local stage_exit="''${PIPESTATUS[0]}"
-
-      echo "$stage_exit" > "$exit_file"
-
-      if [ "$stage_exit" -eq 0 ]; then
-        log "✅ Stage '$name' passed"
-      else
-        log "❌ Stage '$name' failed (exit $stage_exit)"
-      fi
-
-      return "$stage_exit"
-    }
-
-    ##############################################################################
-    # Stage execution loop
-    ##############################################################################
-    log "════════════════════════════════════════════════════════════════"
-    log " Pipeline: $PIPELINE_NAME"
-    log " Target:   $TARGET_STAGE"
-    log " Artifacts: $ARTIFACT_DIR"
-    log "════════════════════════════════════════════════════════════════"
-
-    START_TIME=$(date +%s)
-    failures=()
-    skipped=()
-    passed=()
-    final_exit=0
-
-    stage_count=$(jq '.stages | length' "$MANIFEST")
-
-    for i in $(seq 0 $(( stage_count - 1 ))); do
-      name=$(        jq -r ".stages[$i].name"        "$MANIFEST")
-      command=$(     jq -r ".stages[$i].command"     "$MANIFEST")
-      failure_mode=$(jq -r ".stages[$i].failureMode" "$MANIFEST")
-      condition=$(   jq -r ".stages[$i].condition"   "$MANIFEST")
-
-      # Single-stage invocation: skip non-matching stages
-      if [ "$TARGET_STAGE" != "all" ] && [ "$TARGET_STAGE" != "$name" ]; then
-        continue
-      fi
-
-      # Condition gate
-      if ! condition_satisfied "$condition"; then
-        log "⏭  Stage '$name' skipped (condition: $condition not set)"
-        skipped+=("$name")
-        continue
-      fi
-
-      # Execute the stage
-      run_stage "$name" "$command" "$failure_mode"
-      stage_exit=$?
-
-      if [ "$stage_exit" -eq 0 ]; then
-        passed+=("$name")
-      else
-        case "$failure_mode" in
-          fail-fast)
-            failures+=("$name")
-            final_exit=$stage_exit
-            log "Pipeline aborted (FailFast on stage '$name')"
-            break
-            ;;
-          collect)
-            failures+=("$name")
-            final_exit=1
-            # Continue to next stage
-            ;;
-          *)
-            # Unknown failure mode: treat as FailFast
-            failures+=("$name")
-            final_exit=$stage_exit
-            log "Pipeline aborted (unknown failure mode '$failure_mode' on stage '$name')"
-            break
-            ;;
-        esac
-      fi
-    done
-
-    END_TIME=$(date +%s)
-    DURATION=$(( END_TIME - START_TIME ))
-
-    ##############################################################################
-    # Summary report
-    ##############################################################################
-    log "════════════════════════════════════════════════════════════════"
-    log " Pipeline complete in ''${DURATION}s"
-    log " Passed:  ''${#passed[@]}"
-    log " Failed:  ''${#failures[@]}"
-    log " Skipped: ''${#skipped[@]}"
-    [ $final_exit -eq 0 ] && log " Result:  ✅ PASS" || log " Result:  ❌ FAIL"
-    log "════════════════════════════════════════════════════════════════"
-
-    # Machine-readable summary
-    cat > "$ARTIFACT_DIR/summary.json" << JSON
-    {
-      "pipeline": "$PIPELINE_NAME",
-      "target": "$TARGET_STAGE",
-      "duration_seconds": $DURATION,
-      "result": "$([ $final_exit -eq 0 ] && echo pass || echo fail)",
-      "passed":  $(printf '%s\n' "''${passed[@]+"''${passed[@]}"}"  | jq -R . | jq -s .),
-      "failed":  $(printf '%s\n' "''${failures[@]+"''${failures[@]}"}" | jq -R . | jq -s .),
-      "skipped": $(printf '%s\n' "''${skipped[@]+"''${skipped[@]}"}" | jq -R . | jq -s .)
-    }
-    JSON
-
-    # Human-readable summary
-    {
-      echo "Pipeline: $PIPELINE_NAME"
-      echo "Duration: ''${DURATION}s"
-      echo "Result:   $([ $final_exit -eq 0 ] && echo PASS || echo FAIL)"
-      echo ""
-      echo "Passed  (''${#passed[@]}):  $(IFS=', '; echo "''${passed[*]:-none}")"
-      echo "Failed  (''${#failures[@]}): $(IFS=', '; echo "''${failures[*]:-none}")"
-      echo "Skipped (''${#skipped[@]}): $(IFS=', '; echo "''${skipped[*]:-none}")"
-    } > "$ARTIFACT_DIR/summary.txt"
-
-    exit $final_exit
+  entrypoint = pkgs.writeShellScriptBin "pipeline-runner" ''
+    exec ${nuBin} /etc/pipeline/pipeline_runner.nu "$@"
   '';
 
-  pipelineRunner = pkgs.writeShellScriptBin "pipeline-runner" runnerScript;
-
 in
-  # Return a list of derivations for container.nix to include in pipelineFiles
-  [ pipelineManifest pipelineRunner ]
-
+  [ pipelineManifest toolchainManifest pipelineRunner attestedBuild entrypoint ]

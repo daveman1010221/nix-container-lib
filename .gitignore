@@ -2,11 +2,11 @@
 # Nix
 result
 result-*
- 
+
 # Dhall cache
 .dhall-cache/
 .cache/
- 
+
 # Editor artifacts
 .direnv/
 .envrc.local
@@ -14,9 +14,13 @@ result-*
 *.swo
 .idea/
 .vscode/
- 
+
 # OS artifacts
 .DS_Store
 Thumbs.db
 
 pi/
+
+templates/ci/flake.lock
+templates/dev/flake.lock
+templates/agent/flake.lock

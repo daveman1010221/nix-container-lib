@@ -63,7 +63,8 @@ in
   , customLayer = \(name : Text) -> \(packages : List T.PackageRef) ->
       T.PackageLayer.Custom { name = name, packages = packages }
 
-  -- Build a simple Stage with no declared I/O and no condition
+  -- Build a simple, pure stage with no declared I/O and no condition
+  --
   , simpleStage =
       \(name : Text)
       -> \(command : Text)
@@ -73,6 +74,8 @@ in
           , failureMode = failureMode
           , inputs      = [ T.StageInput.Workspace ]
           , outputs     = [ T.StageOutput.None ]
+          , pure        = True
+          , impurityReason = None Text
           , condition   = None Text
           } : T.Stage
 
@@ -87,6 +90,8 @@ in
           , failureMode = failureMode
           , inputs      = [ T.StageInput.Workspace ]
           , outputs     = [ T.StageOutput.None ]
+          , pure = False
+          , impurityReason = Some "Cannot guarantee environment variable is set"
           , condition   = Some condition
           } : T.Stage
 
