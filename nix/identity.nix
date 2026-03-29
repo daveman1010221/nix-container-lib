@@ -112,10 +112,10 @@ let
         if cfg.user.defaultShell != null && cfg.user.defaultShell != ""
         then [ cfg.user.defaultShell ]
         else [];
-      # Fish is included when the shell layer is present
+      # The configured shell is included when the shell layer is present
       fromShellCfg =
         if cfg.shell != null
-        then [ "/bin/fish" ]
+        then [ cfg.shell.shell ]
         else [];
     in
       lib.unique (always ++ fromUser ++ fromShellCfg);
