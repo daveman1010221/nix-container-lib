@@ -384,40 +384,50 @@ $env.config = ($env.config | upsert hooks {|config|
           mode: [emacs, vi_normal, vi_insert]
           event: { send: ClearScreen }
         }
-        # Alt-. → insert last argument (bash-style)
-        {
-          name: insert_last_arg
-          modifier: alt
-          keycode: char_.
-          mode: [emacs, vi_insert]
-          event: {
-            until: [
-              { send: HistoryHintWordComplete }
-              { edit: InsertLastTokens }
-            ]
-          }
-        }
+
       ]
     }
 
     # ---------------------------------------------------------------------------
-    # Aliases — mirrors the vendor_functions available in the fish config
+    # Commands — mirrors the vendor_functions available in the fish config
     # ---------------------------------------------------------------------------
-    alias lh    = ls -la
-    alias gst   = git status
-    def ocd [p: path] { cd $p; ls }
-    alias ll    = ls -l
-    alias la    = ls -la
+
+    # lh: eza with icons and human-readable sizes (matches fish lh alias)
+    def lh [...args] {
+      if (which eza | is-not-empty) {
+        ^eza --icons --long --all --group-directories-first ...$args
+      } else {
+        ls -la ...$args
+      }
+    }
+
+    # ocd: cd then list
+    def ocd [p: path] { cd $p; lh }
+
+    # shorthands
+    alias gst = git status
+    alias ll  = ls -l
+    alias la  = ls -la
 
     # bat as man pager
     def man [...args] {
-      ^man ...$args | bat --language man --style plain
+      ^man ...$args | ^bat --language man --style plain
     }
 
-    # lol: cowsay + dotacat (matches fish vendor function)
+    # lol: random cowsay figure + dotacat (matches fish lol_fig vendor function)
     def lol [...args] {
       let text = ($args | str join " ")
-      echo $text | ^cowsay -n | ^dotacat
+      let cows = (
+        try {
+          ^find ${pkgs.cowsay}/share/cowsay/cows -name "*.cow" | lines
+        } catch { [] }
+      )
+      if ($cows | is-empty) {
+        $text | ^cowsay | ^dotacat
+      } else {
+        let cow = ($cows | shuffle | first)
+        $text | ^cowsay -f $cow -W 79 | ^dotacat
+      }
     }
 
     # ---------------------------------------------------------------------------
@@ -465,6 +475,45 @@ $env.config = ($env.config | upsert hooks {|config|
         ^kill $pid
       }
       print "✔️ Dropbear stopped."
+    }
+
+    # ---------------------------------------------------------------------------
+    # Greeting — equivalent of fish_greeting
+    # Runs once at interactive startup. Uses lol (cowsay + dotacat) if available.
+    # Falls back to a plain print if dotacat isn't present.
+    # ---------------------------------------------------------------------------
+    let container_name = ($env.CONTAINER_NAME? | default (^hostname | str trim))
+    let greeting_phrases = [
+      "Next stop: Bug-free code!"
+      "Compiling dreams into reality."
+      "Borrow checker approved. Proceed."
+      "Your types are sound. Your logic is not. Good luck."
+      "Fearless concurrency awaits."
+      "No segfaults were harmed in the making of this shell."
+      "cargo build: the optimistic button."
+      "It compiles, therefore it is correct. Probably."
+      "Lifetime annotations: nature's way of saying slow down."
+      "Every unwrap() is a promise to yourself."
+      "Move semantics: because sharing is overrated."
+      "Rewriting it in Rust was always the answer."
+      "Zero-cost abstractions, infinite-cost debugging."
+      "async/await: because blocking is a character flaw."
+      "If it compiles and the tests pass, ship it."
+      "Undefined behavior? Not in this shell."
+    ]
+
+    if ("/root/license.txt" | path exists) {
+      ^cat /root/license.txt | ^dotacat
+    }
+
+    # Display greeting with cowsay + dotacat if available, else plain
+    let phrase = ($greeting_phrases | shuffle | first)
+    if (which dotacat | is-not-empty) {
+      lol $"Welcome to ($container_name)."
+      $phrase | ^dotacat
+    } else {
+      print $"Welcome to ($container_name)."
+      print $phrase
     }
 
     # ---------------------------------------------------------------------------
