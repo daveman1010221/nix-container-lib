@@ -1,17 +1,17 @@
-# polar-container-lib/nix/polar-help.nix
+# nix-container-lib/nix/container-help.nix
 #
-# Generates the polar-help script — a container usage reference that is
-# always available at /bin/polar-help regardless of what the container
+# Generates the container-help script — a container usage reference that is
+# always available at /bin/container-help regardless of what the container
 # is used for.
 #
 # The script is mode-aware: it shows different information depending on
 # whether the container is a dev, CI, agent, or pipeline container.
-# This means a developer running polar-help in a dev container sees
+# This means a developer running container-help in a dev container sees
 # developer-relevant information, while a CI operator sees CI-relevant
 # information.
 #
 # The script is a pkgs.writeShellScriptBin derivation so it lands in
-# /bin/polar-help via the devEnv buildEnv symlink tree — a stable,
+# /bin/container-help via the devEnv buildEnv symlink tree — a stable,
 # arch-correct path that can be referenced from container documentation
 # without knowing any store paths.
 
@@ -83,13 +83,13 @@ let
     #!/usr/bin/env bash
     cat << 'HELP'
     ────────────────────────────────────────────────────────────────────────────
-     polar-container-lib — Container: ${cfg.name}  Mode: ${cfg.mode}
+     nix-container-lib — Container: ${cfg.name}  Mode: ${cfg.mode}
     ────────────────────────────────────────────────────────────────────────────
 
     ${modeHelp}
     COMMON COMMANDS
     ───────────────
-    polar-help              — show this message
+    container-help          — show this message
     nix-collect-garbage     — safe inside this container (GC roots protect tools)
 
     ENVIRONMENT
@@ -101,11 +101,11 @@ let
     TLS:             ${if cfg.tls != null && cfg.tls.enable then "enabled" else "disabled"}
     SSH:             ${if cfg.ssh != null && cfg.ssh.enable then "enabled (port ${toString cfg.ssh.port})" else "disabled"}
 
-    Built with polar-container-lib — https://github.com/daveman1010221/nix-container-lib
+    Built with nix-container-lib — https://github.com/daveman1010221/nix-container-lib
     ────────────────────────────────────────────────────────────────────────────
     HELP
   '';
 
 in
-  pkgs.writeShellScriptBin "polar-help" helpText
+  pkgs.writeShellScriptBin "container-help" helpText
 

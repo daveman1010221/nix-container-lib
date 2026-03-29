@@ -68,7 +68,7 @@ templates/<name>/
 
 ### Issue: Template Dhall Files Use `builtins.getFlake`
 
-**Problem:** The templates use `(builtins.getFlake "polar-container-lib").dhall.prelude` to import the library, but `builtins.getFlake` is a Nix function, not a Dhall function. This causes dhall-to-nix to fail with "Unbound variable: builtins".
+**Problem:** The templates use `(builtins.getFlake "nix-container-lib").dhall.prelude` to import the library, but `builtins.getFlake` is a Nix function, not a Dhall function. This causes dhall-to-nix to fail with "Unbound variable: builtins".
 
 **Root Cause:** 
 - Dhall doesn't have `builtins` - it's a purely functional language without side effects
@@ -93,7 +93,7 @@ The dhall-to-nix CLI tool is a pure Dhall-to-Nix translator that doesn't have ac
 2. **Use relative imports** - Use `./../dhall/prelude.dhall` which works in pure dhall
 3. **Inline types** - Like the smoke test, inline all types (not recommended for templates)
 
-**Recommended Solution:** Use flake inputs in the dhall file. The flake.nix passes `inputs.polar-container-lib` to `mkContainer`, which can then be used in the dhall file. However, dhall doesn't have direct access to flake inputs.
+**Recommended Solution:** Use flake inputs in the dhall file. The flake.nix passes `inputs.nix-container-lib` to `mkContainer`, which can then be used in the dhall file. However, dhall doesn't have direct access to flake inputs.
 
 **Alternative Solution:** Use a relative import `./../dhall/prelude.dhall` which works in both pure dhall and in Nix context (when dhall-to-nix has access to the flake).
 
@@ -119,7 +119,7 @@ let Lib = ./../dhall/prelude.dhall
 
 **Alternative Approach (Preferred):** Modify the templates to use the flake.nix's `inputs` directly and pass the library via Dhall-to-Nix translation:
 
-The flake.nix already imports `polar-container-lib`, so we could:
+The flake.nix already imports `nix-container-lib`, so we could:
 
 1. Pass the library's dhall path via a flake input variable
 2. Use a helper script that sets up the dhall context properly
@@ -129,20 +129,20 @@ Let me implement a better solution that works in both contexts.
 
 ```dhall
 -- OLD (broken for dhall type):
-let Lib = (builtins.getFlake "polar-container-lib").dhall.prelude
+let Lib = (builtins.getFlake "nix-container-lib").dhall.prelude
 
 -- NEW (works everywhere):
-let Lib = (builtins.getFlake "polar-container-lib").dhall.prelude
+let Lib = (builtins.getFlake "nix-container-lib").dhall.prelude
 -- OR use the flake inputs pattern from the README:
 -- Let the flake.nix pass the library via inputs, then use:
--- let Lib = inputs.polar-container-lib.dhall.prelude
+-- let Lib = inputs.nix-container-lib.dhall.prelude
 ```
 
 **Alternative Fix:** Use the flake inputs pattern like the README shows:
 
 ```dhall
 -- Import from flake inputs (requires flake.nix to pass the input)
-let Lib = inputs.polar-container-lib.dhall.prelude
+let Lib = inputs.nix-container-lib.dhall.prelude
 ```
 
 This requires the flake.nix to pass the library as an input, which is already done in the templates.

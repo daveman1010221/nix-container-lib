@@ -1,5 +1,5 @@
 {
-  description = "My project dev container — built with polar-container-lib";
+  description = "My project dev container — built with nix-container-lib";
 
   inputs = {
     nixpkgs.url             = "github:NixOS/nixpkgs/nixos-unstable";
@@ -7,16 +7,16 @@
     rust-overlay.url        = "github:oxalica/rust-overlay";
     rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
 
-    polar-container-lib.url = "github:daveman1010221/nix-container-lib";
-    polar-container-lib.inputs.nixpkgs.follows      = "nixpkgs";
-    polar-container-lib.inputs.flake-utils.follows  = "flake-utils";
+    nix-container-lib.url = "github:daveman1010221/nix-container-lib";
+    nix-container-lib.inputs.nixpkgs.follows      = "nixpkgs";
+    nix-container-lib.inputs.flake-utils.follows  = "flake-utils";
 
     # Add your project-specific flake inputs here:
     # myTool.url = "github:your-org/my-tool";
     # myTool.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay, polar-container-lib, ... } @ inputs:
+  outputs = { self, nixpkgs, flake-utils, rust-overlay, nix-container-lib, ... } @ inputs:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -25,12 +25,12 @@
         };
 
         # Build the container from the Dhall config
-        container = polar-container-lib.lib.${system}.mkContainer {
+        container = nix-container-lib.lib.${system}.mkContainer {
           inherit system pkgs inputs;
           configPath = pkgs.writeText "container.dhall" (
             builtins.replaceStrings
               [ "PRELUDE_PATH" ]
-              [ "${polar-container-lib}/dhall/prelude.dhall" ]
+              [ "${nix-container-lib}/dhall/prelude.dhall" ]
               (builtins.readFile ./container.dhall)
           );
         };

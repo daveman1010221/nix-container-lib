@@ -2,8 +2,8 @@
 -- Dev container configuration for my-project.
 -- Edit this file. Do not edit flake.nix unless you need new flake inputs.
 --
--- Full type reference: polar-container-lib/dhall/types.dhall
--- Available defaults:  polar-container-lib/dhall/defaults.dhall
+-- Full type reference: nix-container-lib/dhall/types.dhall
+-- Available defaults:  nix-container-lib/dhall/defaults.dhall
 
 --let Lib      = ../../dhall/prelude.dhall
 let Lib      = PRELUDE_PATH

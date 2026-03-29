@@ -1,4 +1,4 @@
-# polar-container-lib/nix/container.nix
+# nix-container-lib/nix/container.nix
 #
 # mkContainer: the library's primary entry point.
 #
@@ -55,13 +55,13 @@ let
   # Build the package environment
   # ---------------------------------------------------------------------------
   startScript    = import ./entrypoint.nix { inherit pkgs cfg devEnv; };
-  polarHelpScript = import ./polar-help.nix { inherit pkgs cfg; };
+  containerHelpScript = import ./container-help.nix { inherit pkgs cfg; };
 
   devEnv = pkgs.buildEnv {
     name         = "${cfg.name}-env";
     paths        = cfg.packages
                    ++ lib.optionals (cfg.mode != "minimal")
-                        [ startScript polarHelpScript ];
+                        [ startScript containerHelpScript ];
     pathsToLink  = [ "/bin" "/lib" "/inc" "/etc/ssl/certs" ];
   };
 
