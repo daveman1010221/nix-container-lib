@@ -512,7 +512,7 @@ let
     fi
     echo
     echo " ✅  Environment configuration complete"
-    echo " 🆘  Type 'polar-help' for container usage instructions"
+    echo " 🆘  Type 'container-help' for container usage instructions"
     echo "────────────────────────────────────────────────────────────────────────────"
   '';
 

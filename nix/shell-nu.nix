@@ -169,8 +169,26 @@ let
     # Atuin history init
     ${atuinBin} init nu | save --force /tmp/atuin-init.nu
 
-    # Direnv hook
-    ${direnvBin} hook nu | save --force /tmp/direnv-hook.nu
+    # Direnv hook — direnv hook nu is not supported; use json export approach
+    # This is the community-standard nushell+direnv integration
+    "
+# direnv integration for nushell
+# Source this file to enable .envrc support
+$env.config = ($env.config | upsert hooks {|config|
+  let hooks = ($config | get -o hooks | default {})
+  $hooks | upsert env_change {|h|
+    let existing = ($h | get -o env_change | default {})
+    $existing | upsert PWD {|e|
+      let existing_pwd = ($e | get -o PWD | default [])
+      $existing_pwd | append {||
+        if (which direnv | is-not-empty) {
+          direnv export json | from json | load-env
+        }
+      }
+    }
+  }
+})
+" | save --force /tmp/direnv-hook.nu
   '';
 
   # ---------------------------------------------------------------------------
@@ -203,6 +221,9 @@ let
       blue:   "${colorPalette.blue}"
       purple: "${colorPalette.purple}"
     }
+
+    # Belt-and-suspenders: suppress welcome banner even if config block errors
+    $env.config = ($env.config? | default {} | merge {show_banner: false})
 
     $env.config = {
       show_banner: false
@@ -349,7 +370,7 @@ let
         env_change: {
           PWD: [
             { ||
-              if ($env.PWD != "/workspace") and (("/workspace" | path exists)) and (not ($env | get -i __NCL_WORKSPACE_CD_DONE | default false)) {
+              if ($env.PWD != "/workspace") and (("/workspace" | path exists)) and (not ($env | get -o __NCL_WORKSPACE_CD_DONE | default false)) {
                 $env.__NCL_WORKSPACE_CD_DONE = true
                 cd /workspace
               }
@@ -391,8 +412,8 @@ let
     # Aliases — mirrors the vendor_functions available in the fish config
     # ---------------------------------------------------------------------------
     alias lh    = ls -la
-    alias ocd   = { |p| cd $p; ls }
     alias gst   = git status
+    def ocd [p: path] { cd $p; ls }
     alias ll    = ls -l
     alias la    = ls -la
 
