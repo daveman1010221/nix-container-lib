@@ -425,7 +425,31 @@ let
     else "";
 
   # ---------------------------------------------------------------------------
-  # Phase 6: Cargo cache dir
+  # Phase 6: SFTP server symlink
+  # Dropbear has a compiled-in SFTPSERVER_PATH (typically /usr/libexec/sftp-server).
+  # The openssh sftp-server binary lives in the Nix store and is not automatically
+  # linked to that path. Create the symlink here so dropbear can find it regardless
+  # of whether SSH autostart is configured — remote IDEs (Zed, etc.) need it.
+  # ---------------------------------------------------------------------------
+  phaseSftpSymlink =
+    if cfg.ssh != null then ''
+      ##############################################################################
+      # SFTP server symlink (for dropbear + remote IDE support)
+      ##############################################################################
+      # Dropbear spawns the login shell to execute the SFTP subsystem command.
+      # The login shell (fish or nu) can only find binaries in PATH, not arbitrary
+      # absolute paths. Symlinking sftp-server into /bin makes it findable
+      # regardless of what path the client requests.
+      if [[ -f "${pkgs.openssh}/libexec/sftp-server" ]]; then
+        ln -sf "${pkgs.openssh}/libexec/sftp-server" /bin/sftp-server
+        # Also satisfy the NixOS conventional path that some clients hardcode
+        mkdir -p /run/current-system/sw/libexec
+        ln -sf "${pkgs.openssh}/libexec/sftp-server" /run/current-system/sw/libexec/sftp-server
+      fi
+    ''
+    else "";
+
+  # Phase 7: Cargo cache dir
   # ---------------------------------------------------------------------------
   phaseCargoCache = ''
     ##############################################################################
@@ -565,6 +589,7 @@ in
     + phaseSudo
     + phaseArchConfig
     + phaseNixDaemon
+    + phaseSftpSymlink
     + phaseCargoCache
     + phaseSSH
     + phaseBanner

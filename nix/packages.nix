@@ -132,6 +132,8 @@ in
     tree
     tree-sitter
     which
+    openssh        # provides sftp-server for remote IDE support (Zed, etc.)
+
     # Nushell and plugins (available regardless of configured shell —
     # nushell is useful as a scripting tool even in fish containers)
     nushell
