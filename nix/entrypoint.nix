@@ -87,7 +87,7 @@ let
           [[ -z $user || -z $uid || -z $gid ]] && \
               die "CREATE_USER/CREATE_UID/CREATE_GID must all be set"
 
-          local myshell=${cfg.user.defaultShell}
+          local myshell=${shellBin}
 
           sed -i "s|^$user:.*|$user:x:$uid:$gid::/home/$user:$myshell|" /etc/passwd
           echo "$user:!x:::::::" >> /etc/shadow
