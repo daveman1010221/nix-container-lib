@@ -497,12 +497,18 @@ let
           if [[ ! -f "$RSA_KEY" ]];     then dropbearkey -t rsa    -f "$RSA_KEY"     > /dev/null; fi
           if [[ ! -f "$ED25519_KEY" ]]; then dropbearkey -t ed25519 -f "$ED25519_KEY" > /dev/null; fi
 
+          # Chown host keys to the container user so dropbear can run as that
+          # user rather than root. This allows the user to manage the dropbear
+          # process (ssh-stop) without needing sudo.
+          chown "$DEV_UID:$DEV_GID" "$RSA_KEY" "$ED25519_KEY" 2>/dev/null || true
+
           if [[ -f "$AUTH_KEYS" ]]; then
-            dropbear -E -a \
-              -r "$RSA_KEY" \
-              -r "$ED25519_KEY" \
-              -p "0.0.0.0:$DROPBEAR_PORT" \
-              -P "$SSH_DIR/dropbear.pid" &
+            chroot --userspec="$DEV_UID:$DEV_GID" / \
+              dropbear -F -E -e -a -s \
+                -r "$RSA_KEY" \
+                -r "$ED25519_KEY" \
+                -p "0.0.0.0:$DROPBEAR_PORT" \
+                -P "$SSH_DIR/dropbear.pid" &
 
             sleep 1
             if pgrep -x dropbear >/dev/null 2>&1; then

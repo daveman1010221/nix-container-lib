@@ -460,7 +460,7 @@ $env.config = ($env.config | upsert hooks {|config|
       }
 
       print "🚀 Starting Dropbear on 0.0.0.0:2223"
-      ^dropbear -F -E -e -a -s -D $ssh_dir -r $rsa_key -r $ed25519_key -p 0.0.0.0:2223 &
+      ^dropbear -F -E -e -a -s -r $rsa_key -r $ed25519_key -p 0.0.0.0:2223 &
     }
 
     def ssh-stop [] {
