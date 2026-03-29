@@ -1,4 +1,4 @@
-# nix-container-lib/nix/container.nix
+# polar-container-lib/nix/container.nix
 #
 # mkContainer: the library's primary entry point.
 #
@@ -55,13 +55,13 @@ let
   # Build the package environment
   # ---------------------------------------------------------------------------
   startScript    = import ./entrypoint.nix { inherit pkgs cfg devEnv; };
-  containerHelpScript = import ./container-help.nix { inherit pkgs cfg; };
+  polarHelpScript = import ./polar-help.nix { inherit pkgs cfg; };
 
   devEnv = pkgs.buildEnv {
     name         = "${cfg.name}-env";
     paths        = cfg.packages
                    ++ lib.optionals (cfg.mode != "minimal")
-                        [ startScript containerHelpScript ];
+                        [ startScript polarHelpScript ];
     pathsToLink  = [ "/bin" "/lib" "/inc" "/etc/ssl/certs" ];
   };
 
@@ -164,7 +164,7 @@ let
       "MANPATH=/share/man"
       "RUSTFLAGS=-Clinker=clang-lld-wrapper"
       "PKG_CONFIG_PATH=/lib/pkgconfig"
-      "SHELL=/bin/fish"
+      "SHELL=${if cfg.shell != null then cfg.shell.shell else "/bin/fish"}"
       "SSL_CERT_DIR=/etc/ssl/certs"
       "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
       "CARGO_HTTP_CAINFO=/etc/ssl/certs/ca-bundle.crt"

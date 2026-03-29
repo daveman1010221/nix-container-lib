@@ -114,9 +114,24 @@ let
 
           chmod 1777 /tmp
 
+          ${if shellBin == "/bin/nu" then ''
+          # Nushell skeleton
+          mkdir -p /home/$user/.config/nushell
+          install -Dm644 ${cfg.user.skeletonPath}/config.nu \
+                         /home/$user/.config/nushell/config.nu
+          install -Dm644 ${cfg.user.skeletonPath}/env.nu \
+                         /home/$user/.config/nushell/env.nu
+          # Copy system plugin registry as the user's starting point
+          if [[ -f /etc/nushell/plugin-registry.msgpackz ]]; then
+            install -Dm644 /etc/nushell/plugin-registry.msgpackz \
+                           /home/$user/.config/nushell/plugin.msgpackz
+          fi
+          '' else ''
+          # Fish skeleton
           install -Dm644 ${cfg.user.skeletonPath}/config.fish \
                          /home/$user/.config/fish/config.fish
           touch /home/$user/.config/fish/fish_variables
+          ''}
           chown -R "$uid:$gid" /home/$user
           chmod -R 755 /home/$user
           chmod u+w /home/$user
@@ -223,8 +238,13 @@ let
         OLLAMA_LIB=$(dirname "$OLLAMA_BIN")/../lib/ollama
         if [[ -d "$OLLAMA_LIB" ]]; then
           export LD_LIBRARY_PATH="$OLLAMA_LIB:''${LD_LIBRARY_PATH:-}"
+          ${if shellBin == "/bin/nu" then ''
+          echo "\$env.LD_LIBRARY_PATH = ($OLLAMA_LIB + ':' + ($env.LD_LIBRARY_PATH? | default ''))" \
+            >> /home/$DEV_USER/.config/nushell/env.nu
+          '' else ''
           echo "set -gx LD_LIBRARY_PATH $OLLAMA_LIB \$LD_LIBRARY_PATH" \
             >> /home/$DEV_USER/.config/fish/config.fish
+          ''}
         fi
       fi
 
@@ -232,8 +252,13 @@ let
       # Guard makes this a no-op on AMD/CPU systems
       if [[ -d /run/opengl-driver/lib ]]; then
         export LD_LIBRARY_PATH="/run/opengl-driver/lib:''${LD_LIBRARY_PATH:-}"
+        ${if shellBin == "/bin/nu" then ''
+        echo "\$env.LD_LIBRARY_PATH = ('/run/opengl-driver/lib:' + ($env.LD_LIBRARY_PATH? | default ''))" \
+          >> /home/$DEV_USER/.config/nushell/env.nu
+        '' else ''
         echo "set -gx LD_LIBRARY_PATH /run/opengl-driver/lib \$LD_LIBRARY_PATH" \
           >> /home/$DEV_USER/.config/fish/config.fish
+        ''}
       fi
     ''
     else "";
@@ -487,7 +512,7 @@ let
     fi
     echo
     echo " ✅  Environment configuration complete"
-    echo " 🆘  Type 'container-help' for container usage instructions"
+    echo " 🆘  Type 'polar-help' for container usage instructions"
     echo "────────────────────────────────────────────────────────────────────────────"
   '';
 
@@ -495,20 +520,26 @@ let
   # Phase 9: Exec handoff
   # Mode-specific final exec. Each mode hands off to a different process.
   # ---------------------------------------------------------------------------
+  # Resolve the configured shell binary — defaults to fish if shell cfg is null
+  shellBin =
+    if cfg.shell != null
+    then cfg.shell.shell
+    else "/bin/fish";
+
   phaseExec =
     if cfg.mode == "dev" then ''
       ##############################################################################
-      # Exec handoff → interactive shell
+      # Exec handoff → interactive shell (${shellBin})
       ##############################################################################
       HOME=/home/$DEV_USER \
         LOGNAME=$DEV_USER \
-        SHELL=/bin/fish \
+        SHELL=${shellBin} \
         USER=$DEV_USER \
         XDG_CACHE_HOME=/home/$DEV_USER/.cache \
         XDG_CONFIG_HOME=/home/$DEV_USER/.config \
         XDG_DATA_HOME=/home/$DEV_USER/.local/share \
         ${lib.concatMapStrings (ev: "${ev.name}=${lib.escapeShellArg ev.value} \\\n    ") cfg.startTimeEnv}\
-        chroot --userspec="$DEV_UID:$DEV_GID" / /bin/fish -l
+        chroot --userspec="$DEV_UID:$DEV_GID" / ${shellBin} -l
     ''
     else if cfg.mode == "ci" || cfg.mode == "pipeline" then ''
       ##############################################################################

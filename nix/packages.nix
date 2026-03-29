@@ -132,6 +132,15 @@ in
     tree
     tree-sitter
     which
+    # Nushell and plugins (available regardless of configured shell —
+    # nushell is useful as a scripting tool even in fish containers)
+    nushell
+    nushellPlugins.query
+    nushellPlugins.formats
+    nushellPlugins.gstat
+    nushellPlugins.highlight
+    nushellPlugins.polars
+    nushellPlugins.semver
   ];
 
   # ---------------------------------------------------------------------------
