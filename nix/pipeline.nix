@@ -207,6 +207,35 @@ let
     executable  = true;
   };
 
+  # ---------------------------------------------------------------------------
+  # Attested build helper (nushell — imported from source tree)
+  #
+  # Wraps `cargo build` with provenance event emission so the pipeline runner
+  # can track inputs, outputs, and timing through the Cassini event stream.
+  # Stages invoke it as: cargo-attested-build --package my-crate --release
+  #
+  # Same bootstrapping pattern as pipelineRunner: load from the .nu file in
+  # the source tree, fall back to a stub if it doesn't exist yet.
+  # ---------------------------------------------------------------------------
+
+  attestedBuildSource =
+    let path = ./scripts/cargo-attested-build.nu;
+    in if builtins.pathExists path
+       then builtins.readFile path
+       else ''
+         #!/usr/bin/env nu
+         print "[cargo-attested-build] ERROR: attested build script not found at build time"
+         print "[cargo-attested-build] Expected: ${toString path}"
+         print "[cargo-attested-build] This is a stub — the real script has not been baked in."
+         exit 1
+       '';
+
+  attestedBuild = pkgs.writeTextFile {
+    name        = "cargo-attested-build.nu";
+    destination = "/etc/pipeline/cargo-attested-build.nu";
+    text        = attestedBuildSource;
+    executable  = true;
+  };
 
   # ---------------------------------------------------------------------------
   # Entrypoint wrapper
