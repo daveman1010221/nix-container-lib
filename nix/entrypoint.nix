@@ -239,7 +239,7 @@ let
         if [[ -d "$OLLAMA_LIB" ]]; then
           export LD_LIBRARY_PATH="$OLLAMA_LIB:''${LD_LIBRARY_PATH:-}"
           ${if shellBin == "/bin/nu" then ''
-          echo "\$env.LD_LIBRARY_PATH = ($OLLAMA_LIB + ':' + ($env.LD_LIBRARY_PATH? | default ''))" \
+          printf '$env.LD_LIBRARY_PATH = ("%s:" + ($env.LD_LIBRARY_PATH? | default ""))\n' "$OLLAMA_LIB" \
             >> /home/$DEV_USER/.config/nushell/env.nu
           '' else ''
           echo "set -gx LD_LIBRARY_PATH $OLLAMA_LIB \$LD_LIBRARY_PATH" \
@@ -253,7 +253,7 @@ let
       if [[ -d /run/opengl-driver/lib ]]; then
         export LD_LIBRARY_PATH="/run/opengl-driver/lib:''${LD_LIBRARY_PATH:-}"
         ${if shellBin == "/bin/nu" then ''
-        echo "\$env.LD_LIBRARY_PATH = ('/run/opengl-driver/lib:' + ($env.LD_LIBRARY_PATH? | default ''))" \
+        printf '$env.LD_LIBRARY_PATH = ("/run/opengl-driver/lib:" + ($env.LD_LIBRARY_PATH? | default ""))\n' \
           >> /home/$DEV_USER/.config/nushell/env.nu
         '' else ''
         echo "set -gx LD_LIBRARY_PATH /run/opengl-driver/lib \$LD_LIBRARY_PATH" \
