@@ -21,6 +21,28 @@
 
 let
   # Mode-specific sections appended to the common help text
+  shellHint =
+    if cfg.shell != null && cfg.shell.shell == "/bin/nu" then ''
+      Shell tools (nushell):
+        • lh             — ls -la
+        • ocd <dir>      — cd + list contents
+        • lol <text>     — cowsay + dotacat (important)
+        • ssh-start      — start the Dropbear SSH server
+        • ssh-stop       — stop the Dropbear SSH server
+        • direnv allow   — activate the project .envrc
+    ''
+    else ''
+      Shell tools (fish):
+        • lh          — eza with icons and human-readable sizes
+        • ocd <dir>   — cd + list contents
+        • nvimf       — open file from fzf picker in nvim
+        • nviml       — open file+line from rg+fzf picker in nvim
+        • rgk <term>  — ripgrep with fzf preview
+        • lol <text>  — cowsay + dotacat (important)
+        • ssh-start   — start the Dropbear SSH server
+        • ssh-stop    — stop the Dropbear SSH server
+    '';
+
   modeHelp =
     if cfg.mode == "dev" then ''
       DEVELOPMENT CONTAINER
@@ -30,22 +52,10 @@ let
       Getting started:
         • Your source code should be mounted at /workspace
         • The Nix daemon is running — use 'nix shell', 'nix build', etc.
-        • Fish shell is configured with vi key bindings (press Escape to enter normal mode)
+        • Shell: ${if cfg.shell != null then cfg.shell.shell else "/bin/fish"}
         • Type 'direnv allow' in /workspace to activate the project's .envrc
 
-      Shell tools:
-        • lh          — eza with icons and human-readable sizes
-        • ocd <dir>   — cd + list contents
-        • nvimf       — open file from fzf picker in nvim
-        • nviml       — open file+line from rg+fzf picker in nvim
-        • rgk <term>  — ripgrep with fzf preview
-        • lol <text>  — cowsay + dotacat (important)
-
-      SSH access (if enabled):
-        • ssh-start   — start the Dropbear SSH server
-        • ssh-stop    — stop the Dropbear SSH server
-        • Default port: 2223
-
+      ${shellHint}
       Nix:
         • The nixpkgs registry is pinned to the build-time revision
         • 'nix shell nixpkgs#<pkg>' works offline — no network needed

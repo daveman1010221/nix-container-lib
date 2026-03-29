@@ -350,14 +350,6 @@ $env.config = ($env.config | upsert hooks {|config|
       }
 
       # ---------------------------------------------------------------------------
-      # File size display
-      # ---------------------------------------------------------------------------
-      filesize: {
-        metric: false
-        format: "auto"
-      }
-
-      # ---------------------------------------------------------------------------
       # Error style
       # ---------------------------------------------------------------------------
       error_style: "fancy"
@@ -401,7 +393,7 @@ $env.config = ($env.config | upsert hooks {|config|
           event: {
             until: [
               { send: HistoryHintWordComplete }
-              { edit: InsertLastToken }
+              { edit: InsertLastTokens }
             ]
           }
         }
@@ -426,6 +418,53 @@ $env.config = ($env.config | upsert hooks {|config|
     def lol [...args] {
       let text = ($args | str join " ")
       echo $text | ^cowsay -n | ^dotacat
+    }
+
+    # ---------------------------------------------------------------------------
+    # SSH server management (Dropbear)
+    # ---------------------------------------------------------------------------
+    def ssh-start [] {
+      let ssh_dir = ($env.HOME | path join ".ssh")
+      let auth_keys = ($ssh_dir | path join "authorized_keys")
+      let rsa_key = ($ssh_dir | path join "dropbear_rsa_host_key")
+      let ed25519_key = ($ssh_dir | path join "dropbear_ed25519_host_key")
+
+      if not ("/workspace/authorized_keys" | path exists) {
+        print "❌ /workspace/authorized_keys not found. Copy your public key into the container."
+        return
+      }
+
+      print "🔧 Fixing permissions..."
+      mkdir $ssh_dir
+      ^chmod 700 $ssh_dir
+      ^cp /workspace/authorized_keys $auth_keys
+      ^chmod 600 $auth_keys
+
+      if not ($rsa_key | path exists) {
+        print "🔑 Generating RSA host key..."
+        ^dropbearkey -t rsa -f $rsa_key | ignore
+      }
+      if not ($ed25519_key | path exists) {
+        print "🔑 Generating ED25519 host key..."
+        ^dropbearkey -t ed25519 -f $ed25519_key | ignore
+      }
+
+      print "🚀 Starting Dropbear on 0.0.0.0:2223"
+      ^dropbear -F -E -e -a -s -D $ssh_dir -r $rsa_key -r $ed25519_key -p 0.0.0.0:2223 &
+    }
+
+    def ssh-stop [] {
+      let pids = (^pgrep dropbear | lines)
+      if ($pids | is-empty) {
+        print "ℹ️  No Dropbear processes running."
+        return
+      }
+      print "🛑 Stopping Dropbear..."
+      for pid in $pids {
+        print $"  Killing PID ($pid)"
+        ^kill $pid
+      }
+      print "✔️ Dropbear stopped."
     }
 
     # ---------------------------------------------------------------------------
