@@ -210,6 +210,11 @@ DIRENV_HOOK
     # The user registry at ~/.config/nushell/plugin.msgpackz extends this.
     $env.NU_PLUGIN_DIRS = ["/etc/nushell"]
 
+    # Atuin history — point at the volume-mounted paths so history is shared
+    # with the host regardless of which user the container runs as.
+    $env.ATUIN_CONFIG_DIR = "/atuin-config"
+    $env.ATUIN_DATA_DIR   = "/atuin-data"
+
     # Tool integration init scripts are pre-generated at image build time
     # and baked into /etc/nushell/. Sourced from config.nu.
     # (Generating them at runtime and sourcing via /tmp doesn't work because
