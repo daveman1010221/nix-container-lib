@@ -2,18 +2,22 @@
 
 ## Purpose
 
-This directory contains **template flakes** that serve as starting points for new projects using nix-container-lib. Each template provides a pre-configured container archetype with sensible defaults.
+This directory contains **template flakes** that serve as starting points for
+new projects using nix-container-lib. Each template provides a pre-configured
+container archetype with sensible defaults.
+
+---
 
 ## Templates
 
-### dev/ - Development Container
+### dev/ — Development Container
 
 **Use Case:** Interactive development with full toolchain
 
 **Features:**
-- Full interactive experience (Fish shell, atuin, starship, direnv)
+- Full interactive experience (Fish or Nushell, atuin, starship, direnv)
 - All package layers (Core, CI, Dev, Toolchain, Pipeline)
-- SSH server available (but not auto-started)
+- SSH server available (start manually with `ssh-start`)
 - Pipeline runner available
 - Nix daemon enabled
 
@@ -22,12 +26,12 @@ This directory contains **template flakes** that serve as starting points for ne
 - Projects needing compilers (Rust, C/C++)
 - Interactive CI testing
 
-### ci/ - CI Container
+### ci/ — CI Container
 
 **Use Case:** Headless CI/CD pipeline execution
 
 **Features:**
-- Minimal interactive experience (shell = None)
+- No interactive shell
 - Core, CI, Pipeline layers
 - Pipeline runner configured
 - SSH disabled
@@ -38,7 +42,7 @@ This directory contains **template flakes** that serve as starting points for ne
 - Headless automation
 - Security scanning and auditing
 
-### agent/ - Agent Container
+### agent/ — Agent Container
 
 **Use Case:** Autonomous agent processes with mTLS
 
@@ -47,159 +51,115 @@ This directory contains **template flakes** that serve as starting points for ne
 - mTLS enabled (self-signed certs by default)
 - Nix daemon disabled by default
 - Minimal package set (Core, Agent)
-- SSH available (but not auto-started)
 
 **When to use:**
 - Long-running autonomous processes
 - Agents that need authenticated communication
 - Microservices with mTLS requirements
 
+### minimal/ — Minimal Single-Binary Container
+
+**Use Case:** Init containers, sidecar utilities, single-purpose tools
+
+**Features:**
+- No interactive shell, no start.sh, no user creation
+- Execs a single named binary as the OCI Cmd
+- Configurable static UID/GID (default: 65532)
+- Minimal package set (Core + Custom)
+
+**When to use:**
+- Kubernetes init containers
+- Sidecar utilities
+- Build step containers
+
+---
+
 ## Template Structure
 
-Each template contains:
+Each template directory contains:
 
 ```
 templates/<name>/
-├── flake.nix           # Flake definition with container build
-└── container.dhall     # Dhall configuration for the mode
+├── container.dhall   # Dhall config — edit this to customize
+├── container.nix     # Pre-rendered Nix — commit this alongside container.dhall
+├── flake.nix         # Flake definition — references container.nix
+└── Justfile          # render-container, check-dhall, build, load
 ```
 
-## Issues and Improvements
+---
 
-### Issue: Template Dhall Files Use `builtins.getFlake`
+## Authoring Workflow
 
-**Problem:** The templates use `(builtins.getFlake "nix-container-lib").dhall.prelude` to import the library, but `builtins.getFlake` is a Nix function, not a Dhall function. This causes dhall-to-nix to fail with "Unbound variable: builtins".
-
-**Root Cause:** 
-- Dhall doesn't have `builtins` - it's a purely functional language without side effects
-- `dhall-to-nix` runs the `dhall-to-nix` CLI tool which is a separate Haskell program
-- The dhall-to-nix CLI tool doesn't have access to Nix's builtins during evaluation
-- `builtins.getFlake` is a Nix-specific function that only exists during Nix evaluation
-
-**Impact:** 
-- Users cannot build containers from templates via `nix build`
-- The templates fail with dhall-to-nix because dhall-to-nix runs in isolation
-- The templates are not functional as-is
-
-**Analysis:** Looking at `nix/container.nix`, the library uses `pkgs.dhallToNix configPath` which:
-1. Writes the Dhall file to a temporary location
-2. Runs `dhall-to-nix` CLI tool on that file
-3. Imports the result
-
-The dhall-to-nix CLI tool is a pure Dhall-to-Nix translator that doesn't have access to Nix's builtins. It only supports Dhall expressions, not Nix-specific functions like `builtins.getFlake`.
-
-**Solution Options:**
-1. **Use flake inputs in dhall** - Pass the library's dhall path via the flake context
-2. **Use relative imports** - Use `./../dhall/prelude.dhall` which works in pure dhall
-3. **Inline types** - Like the smoke test, inline all types (not recommended for templates)
-
-**Recommended Solution:** Use flake inputs in the dhall file. The flake.nix passes `inputs.nix-container-lib` to `mkContainer`, which can then be used in the dhall file. However, dhall doesn't have direct access to flake inputs.
-
-**Alternative Solution:** Use a relative import `./../dhall/prelude.dhall` which works in both pure dhall and in Nix context (when dhall-to-nix has access to the flake).
-
-**Implementation:** Update templates to use `./../dhall/prelude.dhall` instead of `builtins.getFlake`.
-
-**Status:** Templates now use relative imports (`./../dhall/prelude.dhall`) which work in both pure dhall and dhall-to-nix contexts. This fixes the "Unbound variable: builtins" error.
-
-**Impact:** 
-- Users cannot run `dhall type --file container.dhall` to type-check their configs
-- Dhall LSP and editor integrations won't work properly
-- The templates are not portable to environments without Nix
-
-**Recommended Fix:** Replace `builtins.getFlake` with a pattern that works in both dhall and Nix contexts:
-
-```dhcl
--- Option 1: Use relative import (works in pure dhall)
-let Lib = ./../dhall/prelude.dhall
-
--- Option 2: Use flake inputs (requires flake context)
--- This requires passing the flake inputs to the dhall file
--- See: https://github.com/dhall-lang/dhall-flake
+```
+1. nix flake init -t github:daveman1010221/nix-container-lib#dev
+2. edit container.dhall
+3. just render-container   →  regenerates container.nix
+4. git add container.dhall container.nix && git commit
+5. nix build .#devContainer
 ```
 
-**Alternative Approach (Preferred):** Modify the templates to use the flake.nix's `inputs` directly and pass the library via Dhall-to-Nix translation:
+**Why the render step?** The Nix sandbox has no network access. Dhall's import
+system fetches dependencies (including the nix-container-lib prelude) over the
+network. Rendering outside the sandbox produces a pure `.nix` file that Nix
+can import safely.
 
-The flake.nix already imports `nix-container-lib`, so we could:
+---
 
-1. Pass the library's dhall path via a flake input variable
-2. Use a helper script that sets up the dhall context properly
-3. Document that dhall type-checking requires a different import pattern
+## Prelude Import
 
-Let me implement a better solution that works in both contexts.
+All template `container.dhall` files import the prelude using a pinned GitHub
+URL with a Dhall integrity hash:
 
 ```dhall
--- OLD (broken for dhall type):
-let Lib = (builtins.getFlake "nix-container-lib").dhall.prelude
-
--- NEW (works everywhere):
-let Lib = (builtins.getFlake "nix-container-lib").dhall.prelude
--- OR use the flake inputs pattern from the README:
--- Let the flake.nix pass the library via inputs, then use:
--- let Lib = inputs.nix-container-lib.dhall.prelude
+let Lib =
+      https://raw.githubusercontent.com/daveman1010221/nix-container-lib/bc1246f3372fbb825de2a85e6f3ca9d0779975d5/dhall/prelude.dhall
+        sha256:42b061b5cb6c7685afaf7e5bc6210640d2c245e67400b22c51e6bfdf85a89e06
 ```
 
-**Alternative Fix:** Use the flake inputs pattern like the README shows:
+This works from any filesystem location — inside or outside the
+nix-container-lib repo — because it's a URL import, not a relative path.
 
-```dhall
--- Import from flake inputs (requires flake.nix to pass the input)
-let Lib = inputs.nix-container-lib.dhall.prelude
+To update to a new revision after a nix-container-lib release:
+
+```bash
+nix-prefetch-git https://github.com/daveman1010221/nix-container-lib
+# note the "rev" field
+
+dhall hash <<< "https://raw.githubusercontent.com/daveman1010221/nix-container-lib/<rev>/dhall/prelude.dhall"
+# note the hash
+
+# update the URL and sha256 in container.dhall, then re-render:
+just render-container
 ```
 
-This requires the flake.nix to pass the library as an input, which is already done in the templates.
-
-## Documentation Files
-
-| File | Purpose |
-|------|---------|
-| `templates/dev/container.dhall` | Dev container configuration |
-| `templates/dev/flake.nix` | Dev container flake definition |
-| `templates/ci/container.dhall` | CI container configuration |
-| `templates/ci/flake.nix` | CI container flake definition |
-| `templates/agent/container.dhall` | Agent container configuration |
-| `templates/agent/flake.nix` | Agent container flake definition |
+---
 
 ## Quick Start
 
-### Create New Project
-
 ```bash
-# From GitHub
+# Initialize from template
 nix flake init -t github:daveman1010221/nix-container-lib#dev
 
-# From local path
-nix flake init -t .#dev
-```
+# Render the pre-baked container.nix (requires dhall-nix)
+just render-container
 
-### Build Container
+# Build the container image
+nix build .#devContainer
 
-```bash
-nix build .#devContainer   # or ciContainer, agentContainer
-```
-
-### Load Container
-
-```bash
+# Load into Docker or Podman
 docker load < result
-```
+# or:
+podman load -i result
 
-### Run Container
-
-```bash
-# Dev container
+# Run
 docker run -it --volume $PWD:/workspace my-project-dev
-
-# CI container
-docker run --rm -v $PWD:/workspace my-project-ci
-
-# Agent container
-docker run -d --volume $PWD:/workspace my-project-agent
 ```
+
+---
 
 ## Template Customization
 
 ### Adding Package Layers
-
-Edit `container.dhall` to add layers:
 
 ```dhall
 packageLayers =
@@ -207,21 +167,23 @@ packageLayers =
   , Lib.PackageLayer.CI
   , Lib.PackageLayer.Dev
   , Lib.customLayer "my-extras"
-      [ Lib.nixpkgs "postgresql" ]
+      [ Lib.nixpkgs "postgresql"
+      , Lib.flakePackage "myTool" "packages.default"
+      ]
   ]
 ```
 
 ### Adding Pipeline Stages
 
-Edit `container.dhall` to add stages:
-
 ```dhall
 pipeline = Some
-  { name = "my-pipeline"
+  { name        = "my-pipeline"
   , artifactDir = "/workspace/pipeline-out"
-  , stages =
-      [ Lib.simpleStage "fmt"  "cargo fmt --check"           Lib.FailureMode.FailFast
-      , Lib.simpleStage "lint" "cargo clippy -- -D warnings" Lib.FailureMode.FailFast
+  , workingDir  = "/workspace"
+  , outputs     = None { ... }
+  , stages      =
+      [ Lib.simpleStage "fmt"  "cargo fmt --check"           Lib.FailureMode.Collect
+      , Lib.simpleStage "lint" "cargo clippy -- -D warnings" Lib.FailureMode.Collect
       , Lib.conditionalStage "test" "cargo test" Lib.FailureMode.FailFast "CI_FULL"
       ]
   }
@@ -229,67 +191,31 @@ pipeline = Some
 
 ### Enabling SSH
 
-Edit `container.dhall`:
-
 ```dhall
-ssh = Some (defaults.defaultSSH // { enable = False })
+ssh = Some (defaults.defaultSSH // { enable = True, port = 2223 })
 ```
 
 ### Enabling TLS
-
-Edit `container.dhall`:
 
 ```dhall
 tls = Some (defaults.defaultTLS // { generateCerts = True })
 ```
 
-## Template Guidelines
-
-1. **dev template** - For interactive development with full toolchain
-2. **ci template** - For headless CI/CD with pipeline runner
-3. **agent template** - For autonomous processes with mTLS
-
-## Template Variants
-
-### Cross-Arch Builds
-
-Templates work for cross-arch builds (x86 building arm64) because:
-- Store paths in `start.sh` are evaluated in target-arch context
-- Architecture detection happens at runtime
-- Nix daemon auto-configures for target architecture
-
-### Custom Package Layers
-
-Add project-specific packages via `Custom` layer:
-
-```dhall
-Lib.customLayer "my-extras"
-  [ Lib.flakePackage "myTool" "packages.default"
-  , Lib.nixpkgs "postgresql"
-  ]
-```
-
 ### Environment Variables
-
-Use `buildEnv` for arch-independent values, `startEnv` for store paths:
 
 ```dhall
 extraEnv =
-  [ Lib.buildEnv "MY_PROJECT_ENV" "development"
-  , Lib.startEnv "MY_STORE_PATH" "/some/store/path"
+  [ Lib.buildEnv "MY_PROJECT_ENV" "development"   -- arch-independent, goes in config.Env
+  , Lib.startEnv "MY_STORE_PATH"  "/store/path"   -- store paths, goes in start.sh
   ]
 ```
 
+---
+
 ## Related Documentation
 
-- `README.md` - Main documentation
-- `docs/architecture.md` - Architecture details
-- `dhall/` - Dhall configuration
-- `nix/` - Nix implementation
-
-## Issues to Address
-
-1. **Fix template Dhall imports** - Replace `builtins.getFlake` with a working pattern
-2. **Test templates** - Verify all templates build successfully
-3. **Document template usage** - Add examples for common use cases
-4. **Add template tests** - CI tests for template validity
+- `README.md` — Main documentation with full usage guide
+- `DEVELOPER_GUIDE.md` — Workflow for working on the library itself
+- `docs/architecture.md` — Architecture details
+- `dhall/types.dhall` — Full type reference
+- `dhall/defaults.dhall` — All available defaults

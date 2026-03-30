@@ -1,162 +1,121 @@
 # Developer Guide
 
-This guide provides detailed instructions for developers who want to work on nix-container-lib.
+This guide provides detailed instructions for developers working on
+nix-container-lib.
 
 ## Prerequisites
 
 ### Required Tools
 
 1. **Nix** (version 2.16 or later)
-   - Package manager for building and managing dependencies
    - Install: `curl https://nixos.org/nix/install | sh`
 
-2. **Dhall** (version 19.1 or later)
-   - Configuration language with type safety
-   - Install: `nix-env -iA dhall-json`
+2. **dhall-nix** — for pre-rendering `.dhall` → `.nix`
+   - Available in the dev shell: `nix develop`
+   - Or: `nix shell nixpkgs#dhall-nix`
 
-3. **Git**
-   - Version control
-   - Install via your package manager or `brew install git`
+3. **just** — task runner for render and check recipes
+   - Available in the dev shell
 
-### Optional Tools
+4. **Git**
 
-1. **jq** - JSON inspection
-   - Install: `nix-env -iA jq` or `brew install jq`
-
-2. **fd** - Fast file finder
-   - Install: `nix-env -iA fd` or `brew install fd`
-
-3. **ripgrep** - Fast text search
-   - Install: `nix-env -iA ripgrep` or `brew install ripgrep`
-
-## Getting Started
-
-### Clone the Repository
+### Easiest Setup
 
 ```bash
 git clone https://github.com/daveman1010221/nix-container-lib.git
 cd nix-container-lib
+nix develop   # gives you dhall, dhall-nix, dhall-json, just, jq, git
 ```
 
-### Enter Development Environment
-
-```bash
-nix develop
-```
-
-This gives you access to all development tools in the correct versions.
-
-### Verify Installation
-
-```bash
-# Check Nix version
-nix --version
-
-# Check Dhall version
-dhall --version
-
-# Check jq (if installed)
-jq --version
-```
+---
 
 ## Build and Test
 
-### Build Smoke Test
+### Re-render the smoke test after editing smoke-test.dhall
 
-The smoke test exercises the full build chain:
+```bash
+just render-smoke-test
+# produces smoke-test.nix — commit both files
+```
+
+### Build the smoke test image
 
 ```bash
 nix build .#smokeTest
+# or:
+just smoke-test
 ```
 
-This validates:
-- Dhall parsing and type-checking
-- Type translation from Dhall to Nix
-- Package resolution
-- Image assembly
-- All ten organizational concepts
-
-### Run Flake Check
+### Run flake check
 
 ```bash
 nix flake check
+# or:
+just check
 ```
 
-This runs all checks defined in the flake.
-
-### Build Container Images
-
-```bash
-# Build dev container
-nix build .#devContainer
-
-# Build CI container
-nix build .#ciContainer
-
-# Build agent container
-nix build .#agentContainer
-```
-
-### Enter Dev Shell
-
-```bash
-nix develop
-```
-
-This gives you access to development tools:
-- `dhall` - Type-checking and translation
-- `dhall-json` - JSON translation
-- `dhall-nix` - Nix translation
-- `nix` - Building and evaluation
-- `jq` - JSON inspection
-- `git` - Version control
+---
 
 ## Development Workflow
 
 ### 1. Make Changes
 
 Edit files in the appropriate directories:
-- `dhall/` - Dhall configuration files
-- `nix/` - Nix implementation files
-- `templates/` - Template files
+- `dhall/` — Dhall type definitions and defaults
+- `nix/` — Nix implementation files
+- `templates/` — Template files
 
-### 2. Type-Check Dhall Files
+### 2. If you edited a `.dhall` file — re-render it
 
 ```bash
-# Type-check all Dhall files
-dhall type --file dhall/types.dhall
-dhall type --file dhall/defaults.dhall
-dhall type --file dhall/prelude.dhall
-dhall type --file smoke-test.dhall
+# For the smoke test:
+just render-smoke-test
+
+# For a template:
+cd templates/dev && just render-container
+
+# For all tracked .dhall files:
+just render-all
 ```
 
-### 3. Build Smoke Test
+Commit the `.dhall` source AND the `.nix` output together.
+
+### 3. Type-check Dhall files
+
+```bash
+dhall type < dhall/types.dhall
+dhall type < dhall/defaults.dhall
+dhall type < dhall/prelude.dhall
+dhall type < smoke-test.dhall
+```
+
+Or use `just check-dhall` which runs all of the above.
+
+### 4. Build smoke test
 
 ```bash
 nix build .#smokeTest
 ```
 
-### 4. Run Flake Check
+### 5. Run flake check
 
 ```bash
 nix flake check
 ```
 
-### 5. Build Container (Optional)
+---
 
-```bash
-nix build .#devContainer
-```
-
-## Key Files to Understand
+## Key Files
 
 ### Dhall Layer
 
 | File | Purpose |
 |------|---------|
-| `dhall/types.dhall` | Type definitions - the contract |
+| `dhall/types.dhall` | Type definitions — the contract |
 | `dhall/defaults.dhall` | Default configurations |
 | `dhall/prelude.dhall` | Public API (imports types + defaults) |
+| `smoke-test.dhall` | Smoke test Dhall config |
+| `smoke-test.nix` | Pre-rendered smoke test (committed alongside .dhall) |
 
 ### Nix Layer
 
@@ -168,23 +127,39 @@ nix build .#devContainer
 | `nix/entrypoint.nix` | start.sh generation (CRITICAL) |
 | `nix/identity.nix` | Linux filesystem spine |
 | `nix/nix-infra.nix` | Nix-in-Nix infrastructure |
-| `nix/shell.nix` | Fish shell environment |
+| `nix/shell.nix` | Shell dispatcher (Fish or Nushell) |
+| `nix/shell-fish.nix` | Fish shell environment |
+| `nix/shell-nu.nix` | Nushell environment |
 | `nix/pipeline.nix` | Pipeline runner |
 | `nix/dev-shell.nix` | Host-side dev shell |
+| `nix/gen-certs.nix` | TLS cert generation |
+| `nix/container-help.nix` | container-help script |
 
 ### Templates
 
-| Directory | Purpose |
-|-----------|---------|
-| `templates/dev/` | Dev container template |
-| `templates/ci/` | CI container template |
-| `templates/agent/` | Agent container template |
+Each template directory contains:
+
+| File | Purpose |
+|------|---------|
+| `container.dhall` | Dhall config — edit this |
+| `container.nix` | Pre-rendered Nix — commit this |
+| `flake.nix` | Consuming flake — references `container.nix` |
+| `Justfile` | `render-container`, `check-dhall`, `build`, `load` |
+
+---
 
 ## Important Patterns
 
-### The EnvVar Placement Rule
+### The Pre-Render Requirement
 
-This is the most important invariant:
+Nix sandbox builds have no network access. Dhall imports (including the
+prelude) resolve over the network. Running `dhall-to-nix` inside a Nix build
+fails.
+
+**Rule:** Every `.dhall` file must have a companion `.nix` file committed
+alongside it. Run `just render-*` after every Dhall edit.
+
+### The EnvVar Placement Rule
 
 | Placement | Destination | Constraint |
 |-----------|-------------|-----------|
@@ -196,12 +171,16 @@ This is the most important invariant:
 
 Container behavior changes based on mode:
 - `Dev` → interactive shell
-- `CI` → pipeline runner
+- `CI` / `Pipeline` → pipeline runner
 - `Agent` → agent supervisor
+- `Minimal` → exec named binary
 
 ### Runtime User Provisioning
 
-User creation happens at container start, not build time.
+User creation happens at container start, not build time. The UID/GID match
+the host user via `CREATE_USER` / `CREATE_UID` / `CREATE_GID` env vars.
+
+---
 
 ## Common Tasks
 
@@ -210,161 +189,127 @@ User creation happens at container start, not build time.
 1. Add variant to `dhall/types.dhall`
 2. Add package list to `nix/packages.nix`
 3. Add translation in `nix/from-dhall.nix`
-4. Update templates if needed
+4. Re-render affected `.dhall` files
+5. Update templates if needed
 
 ### Add a New Configuration Field
 
 1. Add field to `ContainerConfig` in `dhall/types.dhall`
 2. Add translation in `nix/from-dhall.nix`
 3. Use field in relevant Nix files
+4. Re-render smoke test and templates
 
 ### Add a New Default Configuration
 
 1. Add default in `dhall/defaults.dhall`
-2. Update templates to use default
-3. Document in README.md
+2. Re-render smoke test: `just render-smoke-test`
+3. Update templates if needed
+4. Document in README.md
+
+### Pin to a New Revision
+
+After pushing changes to nix-container-lib, update the pinned prelude in all
+`container.dhall` files that reference it:
+
+```bash
+nix-prefetch-git https://github.com/daveman1010221/nix-container-lib
+# note the "rev" from output
+
+dhall hash <<< "https://raw.githubusercontent.com/daveman1010221/nix-container-lib/<rev>/dhall/prelude.dhall"
+# note the hash
+
+# Update the URL and sha256 in each container.dhall, then re-render:
+just render-all
+```
+
+---
 
 ## Debugging
 
 ### Debug Dhall Files
 
 ```bash
-# Type-check and print
-dhall type --file dhall/types.dhall
+# Type-check
+dhall type < dhall/types.dhall
 
-# Translate to JSON
-dhall-to-json --file dhall/prelude.dhall
+# Translate to JSON (for inspection)
+dhall-to-json < dhall/prelude.dhall | jq .
 
-# Translate to YAML
-dhall-to-yaml --file dhall/prelude.dhall
+# Translate to Nix
+dhall-to-nix < smoke-test.dhall
 ```
 
 ### Debug Nix Expressions
 
 ```bash
-# Evaluate and print
-nix eval --json .#lib
-
 # Build with verbose output
 nix build .#smokeTest --verbose
 
-# Build with debug output
+# Build with trace output
 nix build .#smokeTest --show-trace
-```
 
-### Inspect Build Outputs
-
-```bash
-# Build and inspect
+# Inspect closure
 nix build .#smokeTest
 nix store ls result
-
-# Check closure
 nix store ls result --requisites
 ```
 
 ### Cross-Arch Builds
 
 ```bash
-# Build for aarch64 on x86
-nix build .#devContainer --system aarch64-linux
+nix build .#smokeTest --system aarch64-linux
 ```
 
-## Testing
-
-### Automated Tests
-
-```bash
-# Run flake check
-nix flake check
-
-# Build smoke test
-nix build .#smokeTest
-```
-
-### Manual Testing
-
-```bash
-# Test dev container
-nix build .#devContainer
-docker load < result
-
-# Test CI container
-nix build .#ciContainer
-docker load < result
-
-# Test agent container
-nix build .#agentContainer
-docker load < result
-```
-
-## Documentation
-
-### Update Documentation
-
-When adding features, update relevant documentation:
-- `README.md` - Main documentation
-- `docs/architecture.md` - Architecture docs
-- `CONTRIBUTING.md` - Contribution guidelines
-- `DEVELOPER_GUIDE.md` - This file
-
-### Documentation Style
-
-1. **Be clear** - Write for the reader
-2. **Be complete** - Cover all relevant aspects
-3. **Be accurate** - Match the implementation
-4. **Use examples** - Show usage patterns
-5. **Keep updated** - Update when code changes
+---
 
 ## Troubleshooting
 
-### Type-Check Errors
+### `dhall-to-nix` fails with "Unbound variable"
+
+The `container.dhall` has a placeholder or relative import that can't be
+resolved. Ensure the prelude import uses the pinned GitHub URL:
+
+```dhall
+let Lib =
+      https://raw.githubusercontent.com/daveman1010221/nix-container-lib/<rev>/dhall/prelude.dhall
+        sha256:<hash>
+```
+
+### `dhall type` reports `Invalid option '--file'`
+
+`dhall type` reads from stdin. Use `<` instead of `--file`:
 
 ```bash
-# Check specific file
+# Wrong:
 dhall type --file dhall/types.dhall
 
-# Check for parse errors
-dhall type --file dhall/types.dhall --hash-deterministic
+# Correct:
+dhall type < dhall/types.dhall
 ```
 
-### Build Errors
+### `nix build` fails with `called without required argument 'configNixPath'`
 
-```bash
-# Build with verbose output
-nix build .#smokeTest --verbose
+The flake is passing `configPath` (old API). Update to `configNixPath`:
 
-# Build with debug output
-nix build .#smokeTest --show-trace
+```nix
+# Old:
+configPath = ./container.dhall;
+
+# New:
+configNixPath = ./container.nix;
 ```
 
-### Cross-Arch Build Issues
+### `nix build` fails because `container.nix` doesn't exist
 
-```bash
-# Build for specific architecture
-nix build .#devContainer --system aarch64-linux
-```
+Run `just render-container` to generate it, then commit it.
+
+---
 
 ## Resources
 
-- `README.md` - Main documentation
-- `docs/architecture.md` - Architecture documentation
-- `CONTRIBUTING.md` - Contribution guidelines
-- `dhall/` - Dhall configuration
-- `nix/` - Nix implementation
-- `templates/` - Template flakes
-
-## Next Steps
-
-1. **Read the architecture document** - Understand the design
-2. **Examine template files** - See usage examples
-3. **Review existing code** - Follow patterns
-4. **Start small** - Make small changes first
-5. **Test thoroughly** - Use smoke test and manual testing
-
-## Getting Help
-
-- Check existing documentation
-- Look at existing code
-- Review the architecture document
-- Examine template files
+- `README.md` — Main documentation
+- `docs/architecture.md` — Architecture documentation
+- `CONTRIBUTING.md` — Contribution guidelines
+- `dhall/` — Dhall configuration
+- `nix/` — Nix implementation
+- `templates/` — Template flakes

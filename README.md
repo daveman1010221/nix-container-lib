@@ -41,26 +41,25 @@ derivations. Each file corresponds to one organizational concept:
 
 ```
 nix/
-  container.nix     # mkContainer: the primary entry point
-  from-dhall.nix    # Dhall → internal Nix config translation
-  packages.nix      # Package sets keyed by PackageLayer
-  identity.nix      # Linux filesystem spine (passwd, shadow, group, etc.)
-  nix-infra.nix     # Nix-in-Nix: daemon, DB, GC roots, registry
-  entrypoint.nix    # start.sh generation (phase-based, mode-dispatched)
-  shell.nix         # Interactive shell configuration (Fish, plugins, theme)
-  pipeline.nix      # Pipeline runner and stage execution
-  gc-roots.nix      # GC root registration
-  dev-shell.nix     # Host-side nix develop shell
-  gen-certs.nix     # TLS certificate generation (tls-gen / RabbitMQ)
-  polar-help.nix    # polar-help script generation
+  container.nix       # mkContainer: the primary entry point
+  from-dhall.nix      # Dhall → internal Nix config translation
+  packages.nix        # Package sets keyed by PackageLayer
+  identity.nix        # Linux filesystem spine (passwd, shadow, group, etc.)
+  nix-infra.nix       # Nix-in-Nix: daemon, DB, GC roots, registry
+  entrypoint.nix      # start.sh generation (phase-based, mode-dispatched)
+  shell.nix           # Shell dispatcher (Fish or Nushell)
+  shell-fish.nix      # Fish shell environment
+  shell-nu.nix        # Nushell environment
+  pipeline.nix        # Pipeline runner and stage execution
+  gc-roots.nix        # GC root registration
+  dev-shell.nix       # Host-side nix develop shell
+  gen-certs.nix       # TLS certificate generation
+  container-help.nix  # container-help script generation
 ```
 
 ---
 
 ## The Ten Concepts
-
-The library is organized around ten orthogonal concerns. Each maps to one or
-more files in `nix/`.
 
 | # | Concept | Files |
 |---|---------|-------|
@@ -82,7 +81,6 @@ more files in `nix/`.
 ### 1. Add the library as a flake input
 
 ```nix
-# your-project/flake.nix
 inputs = {
   nix-container-lib.url = "github:daveman1010221/nix-container-lib";
   nix-container-lib.inputs.nixpkgs.follows = "nixpkgs";
@@ -91,9 +89,14 @@ inputs = {
 
 ### 2. Write your container config in Dhall
 
+Import the prelude using a pinned URL with integrity hash:
+
 ```dhall
--- your-project/container.dhall
-let Lib      = inputs:nix-container-lib/dhall/prelude.dhall
+-- container.dhall
+let Lib =
+      https://raw.githubusercontent.com/daveman1010221/nix-container-lib/bc1246f3372fbb825de2a85e6f3ca9d0779975d5/dhall/prelude.dhall
+        sha256:42b061b5cb6c7685afaf7e5bc6210640d2c245e67400b22c51e6bfdf85a89e06
+
 let defaults = Lib.defaults
 
 in defaults.devContainer //
@@ -102,45 +105,59 @@ in defaults.devContainer //
       [ Lib.PackageLayer.Core
       , Lib.PackageLayer.Dev
       , Lib.PackageLayer.Toolchain
-      , Lib.PackageLayer.Custom
-          { name = "my-extras"
-          , packages = [ Lib.nixpkgs "postgresql" ]
-          }
+      , Lib.customLayer "my-extras"
+          [ Lib.nixpkgs "postgresql" ]
       ]
-  , pipeline = Some
-      { name        = "my-pipeline"
-      , artifactDir = "/workspace/out"
-      , stages      =
-          [ Lib.simpleStage "test" "cargo test" Lib.FailureMode.FailFast ]
-      }
   }
 ```
 
-### 3. Call mkContainer in your flake
-
-```nix
-# your-project/flake.nix
-outputs = { self, nixpkgs, nix-container-lib, ... }:
-  flake-utils.lib.eachDefaultSystem (system:
-    let
-      pkgs = import nixpkgs { inherit system; };
-      container = nix-container-lib.lib.${system}.mkContainer {
-        inherit system pkgs inputs;
-        configPath = ./container.dhall;
-      };
-    in {
-      packages.devContainer  = container.image;
-      devShells.default      = container.devShell;
-    }
-  );
-```
-
-### 4. Bootstrap from a template
+To get the hash values for a different revision:
 
 ```bash
-# New project from scratch
-nix flake init -t github:daveman1010221/nix-container-lib#dev
+nix-prefetch-git https://github.com/daveman1010221/nix-container-lib
+# use the "rev" field from the output, then:
+dhall hash <<< "https://raw.githubusercontent.com/daveman1010221/nix-container-lib/<rev>/dhall/prelude.dhall"
 ```
+
+### 3. Pre-render the Dhall to Nix
+
+The Nix sandbox has no network access, so Dhall cannot be evaluated at build
+time. Pre-render it once at authoring time and commit the result alongside the
+Dhall source:
+
+```bash
+# requires dhall-nix: nix shell nixpkgs#dhall-nix
+dhall-to-nix < container.dhall > container.nix
+git add container.dhall container.nix
+```
+
+Or use the Justfile recipe provided in every template:
+
+```bash
+just render-container
+```
+
+Re-run this step whenever you edit `container.dhall`.
+
+### 4. Call mkContainer in your flake
+
+```nix
+container = nix-container-lib.lib.${system}.mkContainer {
+  inherit system pkgs inputs;
+  configNixPath = ./container.nix;  # pre-rendered from container.dhall
+};
+```
+
+### 5. Bootstrap from a template
+
+```bash
+nix flake init -t github:daveman1010221/nix-container-lib#dev
+# edit container.dhall, then:
+just render-container
+nix build .#devContainer
+```
+
+Available templates: `dev`, `ci`, `agent`, `minimal`.
 
 ---
 
@@ -150,7 +167,7 @@ Layers are composed left to right. `Core` must always be first.
 
 | Layer | Contents |
 |-------|----------|
-| `Core` | bash, coreutils, nix, ssl, fish |
+| `Core` | bash, coreutils, nix, ssl, fish, nushell |
 | `CI` | git, curl, grype, syft, vulnix, skopeo, dhall, jq |
 | `Dev` | editors, fzf, bat, eza, atuin, starship, direnv, man |
 | `Toolchain` | LLVM 19, Rust nightly, cmake, clang-lld-wrapper |
@@ -162,33 +179,29 @@ Layers are composed left to right. `Core` must always be first.
 
 ## Container Modes
 
-| Mode | Entrypoint behavior | Shell | Nix daemon |
-|------|--------------------|----|---|
-| `Dev` | User creation → shell | Fish (interactive) | Yes |
-| `CI` | Minimal init → pipeline runner → exit | None | Yes |
-| `Pipeline` | Same as CI, semantically distinct | None | Yes |
-| `Agent` | Minimal init → agent supervisor | None | Optional |
+| Mode | Entrypoint | Shell | Nix daemon |
+|------|------------|-------|------------|
+| `Dev` | User creation → interactive shell | Fish or Nushell | Yes |
+| `CI` | Pipeline runner → exit | None | Yes |
+| `Pipeline` | Pipeline runner → exit | None | Yes |
+| `Agent` | Agent supervisor (long-running) | None | Optional |
+| `Minimal` | Exec named binary directly | None | No |
 
 ---
 
 ## The EnvVar Placement Rule
 
-This is the most important invariant the library enforces.
-
-`config.Env` in an OCI image is evaluated **once on the build host**. Any
-store path interpolated there will contain the build host's architecture hash.
-On a cross-arch build (x86 host building arm64 image) this produces wrong paths.
-
-The library enforces a hard split:
+`config.Env` in an OCI image is evaluated once on the build host. Store paths
+interpolated there contain the build host's architecture hash — wrong on
+cross-arch builds.
 
 | Placement | Goes in | Rule |
 |-----------|---------|------|
 | `BuildTime` | `config.Env` | No store paths. Arch-independent values only. |
-| `StartTime` | `start.sh` exports | Store paths allowed. Script is a derivation, evaluated in target-arch context. |
-| `UserProvided` | Caller's responsibility | Injected at `docker run` time via `-e`. |
+| `StartTime` | `start.sh` exports | Store paths allowed. Evaluated in target-arch context. |
+| `UserProvided` | `docker run -e` | Injected at runtime by the caller. |
 
 `from-dhall.nix` routes every `EnvVar` to its correct destination automatically.
-You declare intent in Dhall; the library enforces placement.
 
 ---
 
@@ -196,30 +209,32 @@ You declare intent in Dhall; the library enforces placement.
 
 ### Why Dhall for configuration?
 
-Dhall is a typed, total, importable configuration language that compiles to
-Nix via `dhall-to-nix`. It gives us exhaustive union types, record defaults,
-and a schema that IS the documentation — without requiring consumers to
-understand Nix internals to write a valid config.
+Dhall is a typed, total, importable configuration language. It gives exhaustive
+union types, record defaults, and a schema that IS the documentation — without
+requiring consumers to understand Nix internals to write a valid config.
+
+### Why pre-render Dhall to Nix rather than evaluate at build time?
+
+The Nix sandbox has no network access. Dhall's import system resolves
+dependencies over the network, so `pkgs.dhallToNix` fails inside a sandbox
+build when the Dhall file imports from a URL.
+
+Pre-rendering moves Dhall evaluation to authoring time where network access is
+available. The resulting `.nix` file is pure Nix — sandbox-safe, deterministic,
+and diffable in PRs. You still get full Dhall type safety at authoring time;
+the committed `.nix` is the validated, normalized output.
 
 ### Why not devenv or devshell?
 
 Those tools optimize for host-side dev shells. This library optimizes for
 **containerized** environments where the container is also the CI runner and
-agent runtime. The goals are different enough to warrant a different tool.
+agent runtime.
 
 ### Why is the pipeline owned by the container?
 
-Because the container IS the pipeline runtime. The tools, the runner, and
-the stage definitions are co-deployed. This is the "right-sized devsecops"
-guarantee: what runs locally and what runs in CI are provably identical
-because they are the same artifact.
-
-### Why is Agent a separate mode and not just a CI variant?
-
-Agents have different trust requirements (mTLS mandatory), different lifecycle
-(long-running supervised process vs. exit-with-code), and will likely need
-different package compositions as the pattern matures. Keeping them separate
-now avoids conflating two things that only superficially look the same.
+Because the container IS the pipeline runtime. The tools, the runner, and the
+stage definitions are co-deployed. What runs locally and what runs in CI are
+provably identical because they are the same artifact.
 
 ---
 
@@ -228,11 +243,13 @@ now avoids conflating two things that only superficially look the same.
 ```
 nix-container-lib/
   flake.nix               # Library flake: exports lib, templates, dhall paths
+  Justfile                # render-smoke-test, check-dhall, render-all
+  smoke-test.dhall        # Smoke test Dhall config
+  smoke-test.nix          # Pre-rendered smoke test (committed)
   dhall/
-    lib/
-      types.dhall         # All type definitions
-      defaults.dhall      # Opinionated starting points
-      prelude.dhall       # Single consumer import point
+    types.dhall           # All type definitions
+    defaults.dhall        # Opinionated starting points
+    prelude.dhall         # Single consumer import point
   nix/
     container.nix         # mkContainer (primary entry point)
     from-dhall.nix        # Dhall → Nix translation
@@ -240,15 +257,21 @@ nix-container-lib/
     identity.nix          # Linux filesystem spine
     nix-infra.nix         # Nix-in-Nix infrastructure
     entrypoint.nix        # start.sh generation
-    shell.nix             # Shell environment assembly
+    shell.nix             # Shell dispatcher
+    shell-fish.nix        # Fish shell environment
+    shell-nu.nix          # Nushell environment
     pipeline.nix          # Pipeline runner
     gc-roots.nix          # GC root registration
     dev-shell.nix         # Host-side dev shell
     gen-certs.nix         # TLS cert generation
-    polar-help.nix        # Help script
+    container-help.nix    # Help script
   templates/
     dev/                  # nix flake init -t ...#dev
+      container.dhall     # Dhall config (edit this)
+      container.nix       # Pre-rendered Nix (commit this)
+      flake.nix
+      Justfile            # render-container recipe
     ci/                   # nix flake init -t ...#ci
     agent/                # nix flake init -t ...#agent
+    minimal/              # nix flake init -t ...#minimal
 ```
-
