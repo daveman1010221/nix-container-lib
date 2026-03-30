@@ -133,6 +133,13 @@ let
   toolInits = pkgs.runCommand "nu-tool-inits" {
     nativeBuildInputs = [ pkgs.atuin pkgs.starship pkgs.direnv ];
   } ''
+    # Nix sandbox has no writable $HOME — provide one so atuin/starship
+    # don't try to create config dirs under /homeless-shelter.
+    export HOME=$(mktemp -d)
+    export XDG_CACHE_HOME=$HOME/.cache
+    export XDG_CONFIG_HOME=$HOME/.config
+    mkdir -p $HOME/.cache $HOME/.config
+
     mkdir -p $out/etc/nushell
 
     # Starship prompt
