@@ -6,7 +6,7 @@
 -- Available defaults:  nix-container-lib/dhall/defaults.dhall
 
 --let Lib      = ../../dhall/prelude.dhall
-let Lib      = PRELUDE_PATH
+let Lib = ../../dhall/prelude.dhall
 let defaults = Lib.defaults
 
 let FailureMode = Lib.FailureMode

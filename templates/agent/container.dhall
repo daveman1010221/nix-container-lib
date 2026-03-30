@@ -13,7 +13,7 @@
 -- agent container pattern matures. Use a Custom layer for agent-specific
 -- tooling in the meantime.
 
-let Lib      = PRELUDE_PATH
+let Lib = ../../dhall/prelude.dhall
 let defaults = Lib.defaults
 
 in defaults.agentContainer //

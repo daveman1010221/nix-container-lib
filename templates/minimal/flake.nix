@@ -19,14 +19,14 @@
       let
         pkgs = import nixpkgs { inherit system; };
 
+        # -----------------------------------------------------------------------
+        # container.nix is the pre-rendered output of container.dhall.
+        # To regenerate it after editing container.dhall:
+        #   just render-container
+        # -----------------------------------------------------------------------
         container = nix-container-lib.lib.${system}.mkContainer {
           inherit system pkgs inputs;
-          configPath = pkgs.writeText "container.dhall" (
-            builtins.replaceStrings
-              [ "PRELUDE_PATH" ]
-              [ "${nix-container-lib}/dhall/prelude.dhall" ]
-              (builtins.readFile ./container.dhall)
-          );
+          configNixPath = ./container.nix;
         };
       in
       {

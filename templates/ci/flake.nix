@@ -10,26 +10,23 @@
     nix-container-lib.inputs.flake-utils.follows  = "flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils, nix-container-lib, rust-overlay, ... } @ inputs:
+  outputs = { self, nixpkgs, flake-utils, nix-container-lib, ... } @ inputs:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = import nixpkgs { inherit system; overlays = [ rust-overlay.overlays.default ]; };
+        pkgs = import nixpkgs { inherit system; };
 
+        # -----------------------------------------------------------------------
+        # container.nix is the pre-rendered output of container.dhall.
+        # To regenerate it after editing container.dhall:
+        #   just render-container
+        # -----------------------------------------------------------------------
         container = nix-container-lib.lib.${system}.mkContainer {
           inherit system pkgs inputs;
-          configPath = pkgs.writeText "container.dhall" (
-            builtins.replaceStrings
-              [ "PRELUDE_PATH" ]
-              [ "${nix-container-lib}/dhall/prelude.dhall" ]
-              (builtins.readFile ./container.dhall)
-          );
+          configNixPath = ./container.nix;
         };
       in
       {
         # Build with: nix build .#ciContainer
-        # Load with:  docker load < result
-        # Run with:   docker run --rm -v $PWD:/workspace my-project-ci
-        #             docker run --rm -v $PWD:/workspace -e CI_FULL=1 my-project-ci
         packages.ciContainer = container.image;
         packages.default     = container.image;
       }

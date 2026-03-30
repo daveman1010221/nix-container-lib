@@ -18,7 +18,7 @@
 --   - The entrypoint binary is responsible for its own credential handling.
 --     Use environment variables injected by the orchestrator, not baked-in secrets.
 
-let Lib      = PRELUDE_PATH
+let Lib = ../../dhall/prelude.dhall
 let defaults = Lib.defaults
 
 in defaults.minimalContainer //

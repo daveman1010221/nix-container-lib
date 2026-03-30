@@ -10,12 +10,7 @@
     let
       # -------------------------------------------------------------------------
       # System-independent outputs
-      # Templates and dhall paths do not vary by architecture — lifted outside
-      # eachDefaultSystem so nix flake check doesn't treat them as per-system.
       # -------------------------------------------------------------------------
-
-      # Flake templates
-      # Usage: nix flake init -t github:daveman1010221/nix-container-lib#dev
       templates = {
         dev = {
           path        = ./templates/dev;
@@ -29,10 +24,14 @@
           path        = ./templates/agent;
           description = "Autonomous agent container with mTLS";
         };
+        minimal = {
+          path        = ./templates/minimal;
+          description = "Minimal single-binary container";
+        };
       };
 
-      # Dhall library paths
-      # Usage: inputs.polar-container-lib.dhall.prelude
+      # Dhall library paths — for consumers who want to import the types/defaults
+      # directly from Nix without going through mkContainer.
       dhall = {
         prelude  = ./dhall/prelude.dhall;
         types    = ./dhall/types.dhall;
@@ -40,9 +39,6 @@
       };
 
     in
-    # -------------------------------------------------------------------------
-    # System-specific outputs merged with top-level outputs
-    # -------------------------------------------------------------------------
     (flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
@@ -50,13 +46,29 @@
         # -----------------------------------------------------------------------
         # Library functions — primary API surface for consuming flakes.
         #
-        # Usage:
-        #   inputs.polar-container-lib.lib.${system}.mkContainer {
-        #     inherit system pkgs inputs;
-        #     configPath = ./container.dhall;
-        #   }
+        # AUTHORING WORKFLOW (dhall → nix → build):
+        #
+        #   1. Write your container config in Dhall:
+        #        container.dhall
+        #
+        #   2. Pre-render to Nix OUTSIDE the sandbox:
+        #        just render-container
+        #        # or: dhall-to-nix --file container.dhall > container.nix
+        #
+        #   3. Commit both files.
+        #
+        #   4. Reference the rendered file in your flake:
+        #        mkContainer { ...; configNixPath = ./container.nix; }
+        #
+        # WHY NOT dhallToNix AT BUILD TIME?
+        #   Dhall's import system resolves dependencies at evaluation time.
+        #   The Nix sandbox has no network access, so any Dhall file that
+        #   imports from a URL (including the nix-container-lib prelude) fails.
+        #   Pre-rendering moves the Dhall evaluation to authoring time where
+        #   full filesystem and network access is available.
         # -----------------------------------------------------------------------
         lib = {
+          # Primary entry point. Takes a pre-rendered Nix path.
           mkContainer = import ./nix/container.nix;
 
           # Escape hatches for advanced composition
@@ -72,54 +84,51 @@
 
         # -----------------------------------------------------------------------
         # Smoke test
-        # Exercises the full mkContainer evaluation chain against a real Dhall
-        # config. Uses the CI archetype — minimal package set, no optional
-        # subsystems — to keep build time short while still exercising the full
-        # path: dhallToNix → from-dhall → identity → nix-infra → packages →
-        # entrypoint → gc-roots → buildLayeredImage.
-        #
+        # Uses a pre-rendered smoke-test.nix (produced from smoke-test.dhall).
         # Build with: nix build .#smokeTest
+        # Re-render with: just render-smoke-test
         # -----------------------------------------------------------------------
         legacyPackages.smokeTest = (import ./nix/container.nix {
           inherit system pkgs;
-          inputs     = { };   # Core + CI layers need no external flake inputs
-          configPath = ./smoke-test.dhall;
+          inputs      = {};
+          configNixPath = ./smoke-test.nix;
         }).image;
 
         # -----------------------------------------------------------------------
         # Library development shell
-        # For working on the library itself. Provides Dhall tooling for type-
-        # checking configs and translating to Nix, plus nix for builds.
-        #
+        # Provides Dhall tooling for type-checking and rendering configs.
         # Enter with: nix develop
         # -----------------------------------------------------------------------
         devShells.default = pkgs.mkShell {
-          name = "polar-container-lib-dev";
+          name = "nix-container-lib-dev";
 
           packages = with pkgs; [
             # Dhall tooling
-            dhall-json   # dhall-to-json, dhall-to-yaml, json-to-dhall
-            dhall-nix    # dhall-to-nix (bridge used by pkgs.dhallToNix)
+            dhall        # type-checker and REPL
+            dhall-json   # dhall-to-json, dhall-to-yaml
+            dhall-nix    # dhall-to-nix  ← renders .dhall → .nix for sandbox-safe builds
 
             # Nix tooling
-            nix                 # ensure a modern nix is available
-            nix-prefetch-git    # useful for updating flake input revisions
+            nix
+            nix-prefetch-git
+            just         # for the render-* recipes
 
             # General dev tools
-            jq    # inspect generated pipeline.json manifests
+            jq
             git
           ];
 
           shellHook = ''
-            echo "polar-container-lib dev shell"
+            echo "nix-container-lib dev shell"
             echo ""
-            echo "Available commands:"
-            echo "  dhall type --file dhall/types.dhall     type-check types"
-            echo "  dhall type --file dhall/defaults.dhall  type-check defaults"
-            echo "  dhall type --file dhall/prelude.dhall   type-check prelude"
-            echo "  dhall type --file smoke-test.dhall      type-check smoke test"
-            echo "  nix build .#smokeTest                   build smoke test image"
-            echo "  nix flake check                         check flake outputs"
+            echo "Dhall commands:"
+            echo "  just render-container        render container.dhall → container.nix"
+            echo "  just render-smoke-test       render smoke-test.dhall → smoke-test.nix"
+            echo "  just check-dhall             type-check all .dhall files"
+            echo ""
+            echo "Nix commands:"
+            echo "  nix build .#smokeTest        build smoke test image"
+            echo "  nix flake check              check flake outputs"
           '';
         };
       }

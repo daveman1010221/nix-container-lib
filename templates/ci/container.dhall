@@ -12,7 +12,7 @@
 -- If your pipeline only runs pre-built tools (linting configs, SBOM
 -- scanners), drop Toolchain and the build/push stages.
 
-let Lib      = PRELUDE_PATH
+let Lib = ../../dhall/prelude.dhall
 let defaults = Lib.defaults
 
 let FailureMode = Lib.FailureMode
@@ -32,7 +32,7 @@ in defaults.pipelineContainer //
       { name        = "my-project-pipeline"
       , artifactDir
       , workingDir  = "/workspace/src"
-      , scripts     = defaults.defaultPipelineScripts
+      -- , scripts     = defaults.defaultPipelineScripts
       , outputs     = Some
           { artifacts =
               [ { name         = "binaries"

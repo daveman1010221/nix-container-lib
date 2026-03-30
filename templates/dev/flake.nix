@@ -24,25 +24,22 @@
           overlays = [ rust-overlay.overlays.default ];
         };
 
-        # Build the container from the Dhall config
+        # -----------------------------------------------------------------------
+        # container.nix is the pre-rendered output of container.dhall.
+        # To regenerate it after editing container.dhall:
+        #   just render-container
+        # -----------------------------------------------------------------------
         container = nix-container-lib.lib.${system}.mkContainer {
           inherit system pkgs inputs;
-          configPath = pkgs.writeText "container.dhall" (
-            builtins.replaceStrings
-              [ "PRELUDE_PATH" ]
-              [ "${nix-container-lib}/dhall/prelude.dhall" ]
-              (builtins.readFile ./container.dhall)
-          );
+          configNixPath = ./container.nix;
         };
       in
       {
-        # The OCI container image
         # Build with: nix build .#devContainer
         # Load with:  docker load < result
-        packages.devContainer  = container.image;
-        packages.default       = container.image;
+        packages.devContainer = container.image;
+        packages.default      = container.image;
 
-        # The host-side dev shell
         # Enter with: nix develop
         devShells.default = container.devShell;
       }
