@@ -188,9 +188,11 @@ let
       # llama.cpp models — volume-mounted at /opt/llama-models
       # Symlink into the user's cache after user is created
       if [[ -d /opt/llama-models ]]; then
-        mkdir -p /home/$DEV_USER/.cache
+        mkdir -p /home/$DEV_USER/.cache/huggingface
         ln -sfn /opt/llama-models /home/$DEV_USER/.cache/llama.cpp
+        ln -sfn /opt/llama-models /home/$DEV_USER/.cache/huggingface/hub
         chown -h "$DEV_UID:$DEV_GID" /home/$DEV_USER/.cache/llama.cpp
+        chown -h "$DEV_UID:$DEV_GID" /home/$DEV_USER/.cache/huggingface/hub
       fi
 
       # Ollama data — volume-mounted at /opt/ollama
