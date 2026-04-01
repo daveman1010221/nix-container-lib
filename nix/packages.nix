@@ -117,6 +117,7 @@ in
     grc
     iproute2
     jq
+    just
     lsof
     man
     man-db
