@@ -38,6 +38,13 @@
 #     container = lib.lib.${system}.mkContainer {
 #       inherit system pkgs inputs;
 #       configNixPath = ./container.nix;   # pre-rendered from container.dhall
+#
+#       # Optional: locally-built derivations that cannot be expressed as
+#       # dhall PackageRef entries (e.g. binaries built by craneLib or
+#       # writeShellApplication in the same flake). These are appended to
+#       # the package set resolved from container.nix and included in the
+#       # image alongside packages declared in packageLayers.
+#       extraDerivations = [ myLocalBinary ];
 #     };
 #   in {
 #     packages.devContainer = container.image;
@@ -48,6 +55,7 @@
 , system
 , inputs       # The consuming flake's inputs (for PackageRef resolution)
 , configNixPath  # Path to the pre-rendered Nix file (from dhall-to-nix)
+, extraDerivations ? []
 }:
 
 let
@@ -83,9 +91,12 @@ let
 
   devEnv = pkgs.buildEnv {
     name        = "${cfg.name}-env";
+
     paths       = cfg.packages
+                  ++ extraDerivations
                   ++ lib.optionals (cfg.mode != "minimal")
                        [ startScript containerHelpScript ];
+
     pathsToLink = [ "/bin" "/lib" "/inc" "/etc/ssl/certs" ];
   };
 
