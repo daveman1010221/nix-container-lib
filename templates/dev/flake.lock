@@ -189,19 +189,20 @@
         ],
         "nixpkgs": [
           "nixpkgs"
-        ]
+        ],
+        "uutils-micro": "uutils-micro"
       },
       "locked": {
-        "lastModified": 1776621500,
-        "narHash": "sha256-xceWfEvfmEB7BN18ksAfVpr7YtrfTlWlBYh9jMIBwik=",
+        "lastModified": 1776635247,
+        "narHash": "sha256-ZwclsGtK5+ml7MVWzJprNpmpL7azovrDWCzj4WqBBeo=",
         "owner": "daveman1010221",
         "repo": "nix-container-lib",
-        "rev": "7b22e78327efefbfd314d2d340b4ed4b9de2b2de",
+        "rev": "b8b418eb2666e1750d3f93e2e2470d61d051918f",
         "type": "github"
       },
       "original": {
         "owner": "daveman1010221",
-        "ref": "7b22e78",
+        "ref": "b8b418e",
         "repo": "nix-container-lib",
         "type": "github"
       }
@@ -340,6 +341,32 @@
       "original": {
         "owner": "nix-systems",
         "repo": "default",
+        "type": "github"
+      }
+    },
+    "uutils-micro": {
+      "inputs": {
+        "flake-utils": [
+          "nix-container-lib",
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "nix-container-lib",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1776634362,
+        "narHash": "sha256-fDe5/txArLyYODS6bln9Z4VAmce6UnYqXK6CyaKeB30=",
+        "owner": "daveman1010221",
+        "repo": "uutils-micro",
+        "rev": "7cda0210b076f384906d189171c065a1884cad96",
+        "type": "github"
+      },
+      "original": {
+        "owner": "daveman1010221",
+        "repo": "uutils-micro",
+        "rev": "7cda0210b076f384906d189171c065a1884cad96",
         "type": "github"
       }
     }
