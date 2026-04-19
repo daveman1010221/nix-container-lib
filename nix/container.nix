@@ -21,6 +21,25 @@
 # 2. Run: just render   (or: dhall-to-nix --file container.dhall > container.nix)
 # 3. Commit both container.dhall and container.nix
 # 4. nix build — sandbox-safe, no Dhall evaluation at build time
+#
+# TYPE SAFETY
+# -----------
+# You still get full Dhall type checking when you run `just render-container`.
+# The type errors surface at authoring time, not at Nix build time. The
+# committed container.nix is the validated, rendered output.
+#
+# USAGE IN A PROJECT FLAKE
+# ------------------------
+#   let
+#     lib = inputs.nix-container-lib;
+#     container = lib.lib.${system}.mkContainer {
+#       inherit system pkgs inputs;
+#       configNixPath = ./container.nix;   # pre-rendered from container.dhall
+#     };
+#   in {
+#     packages.devContainer = container.image;
+#     devShells.default     = container.devShell;
+#   }
 
 { pkgs
 , system
