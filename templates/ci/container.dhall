@@ -12,7 +12,8 @@
 -- If your pipeline only runs pre-built tools (linting configs, SBOM
 -- scanners), drop Toolchain and the build/push stages.
 
-let Lib = ./../../dhall/prelude.dhall
+let Lib = https://raw.githubusercontent.com/daveman1010221/nix-container-lib/b8b418e/dhall/prelude.dhall
+        sha256:18acbbb5708565905ab9522fa77a81eb402851f06870a34a22f6c979001c4571
 let defaults = Lib.defaults
 
 let FailureMode = Lib.FailureMode
