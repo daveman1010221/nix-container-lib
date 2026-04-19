@@ -104,7 +104,7 @@
 
           packages = with pkgs; [
             # Dhall tooling
-            dhall        # type-checker and REPL
+            # dhall        # type-checker and REPL
             dhall-json   # dhall-to-json, dhall-to-yaml
             dhall-nix    # dhall-to-nix  ← renders .dhall → .nix for sandbox-safe builds
 

@@ -1,20 +1,23 @@
-# nix-container-lib/nix/shell.nix
+# polar-container-lib/nix/shell.nix
 #
 # Shell environment dispatcher.
-# Inspects cfg.shell.shell and delegates to the appropriate shell module.
+# Inspects cfg.shell.type (as resolved by from-dhall.nix) and delegates
+# to the appropriate shell module.
 #
-# This module is ONLY invoked when cfg.shell != null and cfg.mode != "minimal".
-# CI and agent containers set shell = None and pay zero cost for this module.
+# This module is ONLY invoked when cfg.shell != null.
 #
-# Supported shells:
-#   /bin/fish  → shell-fish.nix  (Fish with bobthefish, atuin, starship, direnv)
-#   /bin/nu    → shell-nu.nix    (Nushell with plugins, atuin, starship, direnv)
+# Shell type → module mapping:
+#   "minimal-dash"       → shell-dash.nix      (/bin/sh, no config)
+#   "minimal-nu"         → shell-nu-minimal.nix (/bin/nu, bare config)
+#   "interactive-fish"   → shell-fish.nix       (full fish experience)
+#   "interactive-nu"     → shell-nu.nix         (full nushell experience)
 #
 # To add a new shell:
-#   1. Add a new shell-<name>.nix module following the same contract:
-#      takes { pkgs, cfg, devEnv }, returns a list of derivations.
+#   1. Add a shell-<name>.nix module: takes { pkgs, cfg }, returns list of derivations.
 #   2. Add a branch here.
-#   3. Add the shell binary to the package layer it belongs in (packages.nix).
+#   3. Add the shell binary to packages.nix in the appropriate shell set.
+#   4. Add the shell type to from-dhall.nix resolveShell.
+#   5. Add the Dhall variant to types.dhall if needed.
 
 { pkgs
 , cfg
@@ -22,11 +25,19 @@
 }:
 
 let
-  shell = cfg.shell.shell;
+  shellType = cfg.shell.type;
 in
-  if shell == "/bin/fish" then
+  if shellType == "minimal-dash" then
+    import ./shell-dash.nix { inherit pkgs cfg; }
+
+  else if shellType == "minimal-nu" then
+    import ./shell-nu-minimal.nix { inherit pkgs cfg; }
+
+  else if shellType == "interactive-fish" then
     import ./shell-fish.nix { inherit pkgs cfg devEnv; }
-  else if shell == "/bin/nu" then
-    import ./shell-nu.nix  { inherit pkgs cfg devEnv; }
+
+  else if shellType == "interactive-nu" then
+    import ./shell-nu.nix { inherit pkgs cfg devEnv; }
+
   else
-    throw "shell.nix: unsupported shell '${shell}'. Supported: /bin/fish, /bin/nu"
+    throw "shell.nix: unknown shell type '${shellType}'"

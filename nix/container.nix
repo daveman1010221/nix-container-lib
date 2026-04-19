@@ -1,4 +1,4 @@
-# nix-container-lib/nix/container.nix
+# polar-container-lib/nix/container.nix
 #
 # mkContainer: the library's primary entry point.
 #
@@ -6,64 +6,39 @@
 # ContainerConfig) and produces a complete OCI image derivation plus a
 # host-side devShell.
 #
-# WHY PRE-RENDERED?
-# -----------------
-# Nix sandbox builds have no network access. `pkgs.dhallToNix` evaluates Dhall
-# at build time and Dhall's import system attempts network resolution for any
-# library imports (including the nix-container-lib prelude). This causes builds
-# to fail in the sandbox.
-#
-# The solution: evaluate Dhall to Nix BEFORE the build, outside the sandbox,
-# using the `just render-container` recipe (which shells out to `dhall-to-nix`).
-# The resulting `.nix` file is committed alongside the `.dhall` source and
-# imported directly here — no Dhall runtime involved in the build at all.
+# PARAMETERS
+# ----------
+#   pkgs             — nixpkgs instance
+#   system           — e.g. "x86_64-linux"
+#   inputs           — consuming flake's inputs (for PackageRef resolution)
+#   configNixPath    — path to the pre-rendered Nix file (from dhall-to-nix)
+#   extraDerivations — optional list of additional derivations to add to the
+#                      image's bin environment (e.g. a custom entrypoint binary)
 #
 # AUTHORING WORKFLOW
 # ------------------
 # 1. Edit your container.dhall
-# 2. Run: just render-container   (or: dhall-to-nix --file container.dhall > container.nix)
+# 2. Run: just render   (or: dhall-to-nix --file container.dhall > container.nix)
 # 3. Commit both container.dhall and container.nix
 # 4. nix build — sandbox-safe, no Dhall evaluation at build time
-#
-# TYPE SAFETY
-# -----------
-# You still get full Dhall type checking when you run `just render-container`.
-# The type errors surface at authoring time, not at Nix build time. The
-# committed container.nix is the validated, rendered output.
-#
-# USAGE IN A PROJECT FLAKE
-# ------------------------
-#   let
-#     lib = inputs.nix-container-lib;
-#     container = lib.lib.${system}.mkContainer {
-#       inherit system pkgs inputs;
-#       configNixPath = ./container.nix;   # pre-rendered from container.dhall
-#     };
-#   in {
-#     packages.devContainer = container.image;
-#     devShells.default     = container.devShell;
-#   }
 
 { pkgs
 , system
-, inputs       # The consuming flake's inputs (for PackageRef resolution)
-, configNixPath  # Path to the pre-rendered Nix file (from dhall-to-nix)
+, inputs
+, configNixPath
+, extraDerivations ? []
 }:
 
 let
   lib = pkgs.lib;
 
   # ---------------------------------------------------------------------------
-  # Import the pre-rendered Nix config.
-  # This is a pure Nix import — no Dhall runtime, no network, sandbox-safe.
-  # The file was produced by: dhall-to-nix --file container.dhall > container.nix
+  # Import and translate config
   # ---------------------------------------------------------------------------
   rawCfg = import configNixPath;
+  cfg    = import ./from-dhall.nix { inherit pkgs inputs; cfg = rawCfg; };
 
-  # ---------------------------------------------------------------------------
-  # Translate the raw Dhall-to-Nix output to the internal config structure
-  # ---------------------------------------------------------------------------
-  cfg = import ./from-dhall.nix { inherit pkgs inputs; cfg = rawCfg; };
+  isMinimal = cfg.mode == "minimal";
 
   # ---------------------------------------------------------------------------
   # Identity & filesystem spine
@@ -71,102 +46,162 @@ let
   identity = import ./identity.nix { inherit pkgs system cfg; };
 
   # ---------------------------------------------------------------------------
-  # Nix-in-Nix infrastructure
+  # Nix-in-Nix infrastructure (mode-aware)
   # ---------------------------------------------------------------------------
   nixInfra = import ./nix-infra.nix { inherit pkgs system cfg; };
 
   # ---------------------------------------------------------------------------
+  # Package sets (for banner tool list)
+  # ---------------------------------------------------------------------------
+  packageSets = import ./packages.nix { inherit pkgs inputs; };
+
+  # ---------------------------------------------------------------------------
   # Build the package environment
   # ---------------------------------------------------------------------------
-  startScript         = import ./entrypoint.nix { inherit pkgs cfg devEnv; };
-  containerHelpScript = import ./container-help.nix { inherit pkgs cfg; };
+  startScript =
+    if isMinimal then null
+    else import ./entrypoint.nix { inherit pkgs cfg devEnv; };
+
+  containerHelpScript =
+    if isMinimal then null
+    else import ./container-help.nix { inherit pkgs cfg; };
 
   devEnv = pkgs.buildEnv {
     name        = "${cfg.name}-env";
-    paths       = cfg.packages
-                  ++ lib.optionals (cfg.mode != "minimal")
-                       [ startScript containerHelpScript ];
+    paths       =
+      cfg.packages
+      ++ extraDerivations
+      # Include shSymlink in devEnv so buildEnv correctly merges /bin/sh
+      # alongside other /bin entries. Adding it only to allContents/contents
+      # causes buildLayeredImage to see it as a separate layer whose /bin
+      # directory doesn't merge with devEnv's /bin symlink farm.
+      ++ lib.optional (identity.shSymlink != null) identity.shSymlink
+      ++ lib.optionals (!isMinimal) (
+           [ startScript containerHelpScript ]
+         );
     pathsToLink = [ "/bin" "/lib" "/inc" "/etc/ssl/certs" ];
   };
 
   # ---------------------------------------------------------------------------
-  # Shell environment (optional)
+  # Shell files (mode-aware)
+  # Minimal shells get minimal configs. Interactive shells get full configs.
+  # No shell = no shell files.
   # ---------------------------------------------------------------------------
   shellFiles =
-    if cfg.shell != null && cfg.mode != "minimal"
-    then import ./shell.nix { inherit pkgs cfg devEnv; }
-    else [];
+    if cfg.shell == null then []
+    else import ./shell.nix { inherit pkgs cfg devEnv; };
 
   # ---------------------------------------------------------------------------
-  # Pipeline runner (optional)
+  # Pipeline runner (non-minimal only)
   # ---------------------------------------------------------------------------
   pipelineFiles =
-    if cfg.pipeline != null && cfg.mode != "minimal"
+    if cfg.pipeline != null && !isMinimal
     then import ./pipeline.nix { inherit pkgs cfg; }
     else [];
 
   # ---------------------------------------------------------------------------
-  # TLS certificates (optional)
+  # TLS certificates (non-minimal only)
   # ---------------------------------------------------------------------------
   tlsDerivation =
-    if cfg.tls != null && cfg.tls.generateCerts && cfg.mode != "minimal"
+    if cfg.tls != null && cfg.tls.generateCerts && !isMinimal
     then import ./gen-certs.nix { inherit pkgs cfg; }
     else null;
 
   # ---------------------------------------------------------------------------
-  # Nix DB and GC roots
+  # SBOM — generated from closure, embedded in image
   # ---------------------------------------------------------------------------
-  allContents =
+  # We generate the SBOM after assembling allContents so the closure is complete.
+  # The SBOM derivation references closureInfo which is computed below.
+  # To break the circularity, we compute a preliminary closure for SBOM purposes.
+  preliminaryContents =
     [ devEnv ]
     ++ shellFiles
     ++ pipelineFiles
     ++ nixInfra.configFiles
-    ++ [
-      nixInfra.ldLinker
-      nixInfra.usrBinEnv
-      nixInfra.fhsDirs
-    ]
+    ++ [ nixInfra.ldLinker nixInfra.usrBinEnv nixInfra.fhsDirs ]
     ++ lib.optional (tlsDerivation != null) tlsDerivation;
 
+  preliminaryClosureInfo = pkgs.closureInfo {
+    rootPaths = preliminaryContents ++ identity.baseInfo;
+  };
+
+  sbom = import ./sbom.nix {
+    inherit pkgs cfg;
+    closureInfo = preliminaryClosureInfo;
+  };
+
+  # ---------------------------------------------------------------------------
+  # Container info banner
+  # ---------------------------------------------------------------------------
+  containerInfo = import ./banner.nix {
+    inherit pkgs cfg packageSets;
+  };
+
+  # ---------------------------------------------------------------------------
+  # Full contents list
+  # ---------------------------------------------------------------------------
+  allContents =
+    preliminaryContents
+    ++ [ sbom containerInfo ];
+
+  # ---------------------------------------------------------------------------
+  # Nix DB and GC roots (non-minimal)
+  # ---------------------------------------------------------------------------
   closureInfo = pkgs.closureInfo {
     rootPaths = allContents ++ identity.baseInfo;
   };
 
-  nixDbRegistration = pkgs.runCommand "nix-db-registration" {} ''
-    mkdir -p $out/nix/var/nix/db
-    export NIX_REMOTE=local?root=$out
-    ${pkgs.nix}/bin/nix-store --load-db < ${closureInfo}/registration
-  '';
+  nixDbRegistration =
+    if isMinimal then null
+    else pkgs.runCommand "nix-db-registration" {} ''
+      mkdir -p $out/nix/var/nix/db
+      export NIX_REMOTE=local?root=$out
+      ${pkgs.nix}/bin/nix-store --load-db < ${closureInfo}/registration
+    '';
 
-  gcRoots = import ./gc-roots.nix { inherit pkgs allContents; };
+  gcRoots =
+    if isMinimal then null
+    else import ./gc-roots.nix { inherit pkgs allContents; };
 
   # ---------------------------------------------------------------------------
   # OCI User field
   # ---------------------------------------------------------------------------
   containerUser =
-    if cfg.mode == "minimal"
-    then
-      if cfg.staticUid != null && cfg.staticGid != null
-      then "${toString cfg.staticUid}:${toString cfg.staticGid}"
-      else "0:0"
+    if cfg.staticUid != null && cfg.staticGid != null
+    then "${toString cfg.staticUid}:${toString cfg.staticGid}"
     else "0:0";
 
   # ---------------------------------------------------------------------------
   # OCI Cmd
+  #
+  # Minimal mode priority:
+  #   1. Explicit entrypoint → /bin/<entrypoint>
+  #   2. Shell → shell binary path
+  # Non-minimal: always start.sh
   # ---------------------------------------------------------------------------
   containerCmd =
-    if cfg.mode == "minimal"
-    then [ "/bin/${cfg.entrypoint}" ]
-    else [ "/bin/start.sh" ];
+    if isMinimal then
+      if cfg.entrypoint != null then
+        [ "/bin/${cfg.entrypoint}" ]
+      else if cfg.shell != null then
+        [ cfg.shell.shell ]
+      else
+        throw "container.nix: minimal mode requires entrypoint or shell"
+    else
+      [ "/bin/start.sh" ];
 
   # ---------------------------------------------------------------------------
   # Build-time env
   # ---------------------------------------------------------------------------
+  minimalBuildEnv =
+    [ "PATH=/bin:/usr/bin" ]
+    ++ lib.optionals (cfg.shell != null) [
+      "SHELL=${cfg.shell.shell}"
+    ]
+    ++ cfg.buildTimeEnv;
+
   standardBuildEnv =
-    if cfg.mode == "minimal"
-    then cfg.buildTimeEnv
-    else [
-      "PATH=/bin:/usr/bin:/root/.cargo/bin"
+    [ "PATH=/bin:/usr/bin:/root/.cargo/bin"
       "CC=clang"
       "CXX=clang++"
       "CMAKE=/bin/cmake"
@@ -190,11 +225,14 @@ let
   image = pkgs.dockerTools.buildLayeredImage {
     name      = cfg.name;
     tag       = "latest";
-    maxLayers = if cfg.mode == "minimal" then 60 else 100;
+    maxLayers = if isMinimal then 10 else 20;
 
     contents =
       allContents
-      ++ [ nixDbRegistration gcRoots ];
+      ++ lib.optionals (!isMinimal) [
+           nixDbRegistration
+           gcRoots
+         ];
 
     extraCommands = ''
       mkdir -p etc
@@ -210,13 +248,19 @@ let
       Cmd        = containerCmd;
       User       = containerUser;
       WorkingDir = "/workspace";
-      Env        = standardBuildEnv;
+      Env        = if isMinimal then minimalBuildEnv else standardBuildEnv;
       Volumes    = {};
+      Labels     = {
+        "org.opencontainers.image.title"   = cfg.name;
+        "org.opencontainers.image.created" = "1970-01-01T00:00:00Z";
+        "org.opencontainers.image.vendor"  = "nix-container-lib";
+        "org.opencontainers.image.sbom"    = "/_manifest/spdx.json";
+      };
     };
   };
 
   # ---------------------------------------------------------------------------
-  # Host-side dev shell
+  # Host-side dev shell (non-minimal)
   # ---------------------------------------------------------------------------
   devShell = import ./dev-shell.nix {
     inherit pkgs cfg inputs;

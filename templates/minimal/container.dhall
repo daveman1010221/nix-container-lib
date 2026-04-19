@@ -1,53 +1,74 @@
--- container.dhall
--- Minimal container configuration for my-project.
+-- templates/minimal/container.dhall
 --
--- Minimal containers exec a single binary directly — no start.sh, no user
--- creation phase, no Nix daemon, no interactive shell. The OCI Cmd is set
--- to the binary named in `entrypoint`. The binary's package must be declared
--- in packageLayers (typically via a Custom layer).
+-- Minimal container configuration template.
 --
--- Typical use cases:
---   - Kubernetes init containers (clone a repo, fetch a secret, seed a volume)
---   - Sidecar utilities (health check, log shipper)
---   - Build step containers (compile, test, publish)
+-- Minimal containers exec a single binary or shell directly.
+-- No start.sh, no user creation, no Nix daemon.
+-- The OCI Cmd is one of:
+--   - ["/bin/<entrypoint>"]  when entrypoint is set and shell is None
+--   - ["/bin/nu"]            when shell = Shell.Minimal { shell = "/bin/nu" }
+--   - ["/bin/sh"]            when shell = Shell.Minimal { shell = "/bin/sh" }
 --
--- Security notes:
---   - Set staticUid/staticGid to a non-root UID for production use.
---     UID 65532 is a conventional non-root UID for init containers.
---   - Keep packageLayers minimal — every package is attack surface.
---   - The entrypoint binary is responsible for its own credential handling.
---     Use environment variables injected by the orchestrator, not baked-in secrets.
+-- Base layer is Micro — the absolute minimum for OCI compliance:
+--   cacert, coreutils (minimal subset), getent, openssl
+--
+-- Use cases:
+--   - Kubernetes init containers
+--   - Sidecar utilities
+--   - Build step containers
+--   - Any container where size and attack surface matter
+--
+-- Security:
+--   - UID 65532 is the conventional non-root UID for init containers
+--   - Keep packageLayers short — every package is attack surface
+--   - Inject runtime secrets via env vars, never bake them in
 
-let Lib = https://raw.githubusercontent.com/daveman1010221/nix-container-lib/bc1246f3372fbb825de2a85e6f3ca9d0779975d5/dhall/prelude.dhall
-        sha256:42b061b5cb6c7685afaf7e5bc6210640d2c245e67400b22c51e6bfdf85a89e06
+let Lib = ./../../dhall/prelude.dhall
 let defaults = Lib.defaults
 
 in defaults.minimalContainer //
-  { name       = "my-init-container"
+  { name = "my-init-container"
 
-  -- The binary to exec as the container entrypoint.
-  -- Must be provided by one of the packages in packageLayers.
+  -- ── Entrypoint (option A: binary) ──────────────────────────────────────────
+  -- Set entrypoint and leave shell = None.
+  -- OCI Cmd becomes ["/bin/my-entrypoint-binary"].
   , entrypoint = Some "my-entrypoint-binary"
 
+  -- ── Shell (option B: minimal shell as entrypoint) ──────────────────────────
+  -- Comment out entrypoint above and uncomment one of these.
+  -- OCI Cmd becomes ["/bin/nu"] or ["/bin/sh"].
+  --
+  -- Minimal nushell — vi mode, show_banner false, basic completions.
+  -- No plugins, no themes, no atuin, no starship.
+  -- , shell = Some Lib.defaults.minimalNuShell
+  --
+  -- Minimal POSIX sh (dash) — tiny, strict, no config.
+  -- , shell = Some Lib.defaults.minimalDashShell
+  --
+  -- Or construct directly:
+  -- , shell = Some (Lib.minimalShell "/bin/nu")
+  -- , shell = Some (Lib.minimalShell "/bin/sh")
+
   -- Run as a non-root user. UID 65532 is conventional for init containers.
-  -- Remove these lines to run as root (not recommended for production).
-  , staticUid  = Some 65532
-  , staticGid  = Some 65532
+  , staticUid = Some 65532
+  , staticGid = Some 65532
 
+  -- ── Package layers ─────────────────────────────────────────────────────────
+  -- Start with Micro (not Core) for truly minimal containers.
+  -- Micro = cacert + minimal uutils + getent + openssl. Nothing else.
+  -- Add only what your binary actually needs at runtime.
   , packageLayers =
-      [ Lib.PackageLayer.Core
-
-      -- Declare exactly the packages your binary needs at runtime.
-      -- Keep this list short — minimal containers should be minimal.
+      [ Lib.PackageLayer.Micro
       , Lib.customLayer "my-entrypoint"
           [ Lib.flakePackage "myInput" "packages.default"
-          -- , Lib.nixpkgs "git"
-          -- , Lib.nixpkgs "cacert"
+          -- Common additions:
+          -- , Lib.nixpkgs "git"      -- if you need to clone repos
+          -- , Lib.nixpkgs "curl"     -- if you need HTTP
+          -- , Lib.nixpkgs "jq"       -- if you need JSON processing
           ]
       ]
 
-  -- Build-time environment variables (no store paths).
-  -- Runtime values should be injected by the orchestrator, not baked in.
+  -- Build-time env vars (no store paths — safe for OCI config.Env)
   , extraEnv =
       [ Lib.buildEnv "GIT_TERMINAL_PROMPT" "0"
       -- , Lib.buildEnv "MY_SETTING" "value"

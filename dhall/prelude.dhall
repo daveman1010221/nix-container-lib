@@ -11,6 +11,20 @@
 --   let Lib = ./prelude.dhall
 --
 --   in Lib.defaults.devContainer // { name = "my-project", ... }
+--
+-- SHELL MIGRATION (if upgrading from an earlier version):
+--
+--   OLD:  shell = Some { shell = "/bin/fish", colorScheme = "gruvbox", ... }
+--   NEW:  shell = Some (Lib.Shell.Interactive { shell = "/bin/fish", colorScheme = "gruvbox", ... })
+--
+--   OLD:  shell = None T.ShellConfig
+--   NEW:  shell = None Lib.Shell
+--
+--   Convenience constructors are provided:
+--     Lib.defaults.minimalDashShell       → Shell.Minimal { shell = "/bin/sh" }
+--     Lib.defaults.minimalNuShell         → Shell.Minimal { shell = "/bin/nu" }
+--     Lib.defaults.defaultInteractiveFishShell → Shell.Interactive { ... }
+--     Lib.defaults.defaultInteractiveNuShell   → Shell.Interactive { ... }
 
 let T        = ./types.dhall
 let defaults = ./defaults.dhall
@@ -18,20 +32,24 @@ let defaults = ./defaults.dhall
 in
   -- ---------------------------------------------------------------------------
   -- Types (re-exported flat for ergonomic access)
-  -- Lib.ContainerConfig, Lib.Mode.Dev, Lib.PackageLayer.Core, etc.
   -- ---------------------------------------------------------------------------
-  { ContainerConfig = T.ContainerConfig
-  , Mode            = T.Mode
-  , FailureMode     = T.FailureMode
-  , EnvVarPlacement = T.EnvVarPlacement
-  , EnvVar          = T.EnvVar
-  , PackageRef      = T.PackageRef
-  , PackageLayer    = T.PackageLayer
+  { ContainerConfig        = T.ContainerConfig
+  , Mode                   = T.Mode
+  , FailureMode            = T.FailureMode
+  , EnvVarPlacement        = T.EnvVarPlacement
+  , EnvVar                 = T.EnvVar
+  , PackageRef             = T.PackageRef
+  , PackageLayer           = T.PackageLayer
+
+  -- Shell types
+  , Shell                  = T.Shell
+  , MinimalShellConfig     = T.MinimalShellConfig
+  , InteractiveShellConfig = T.InteractiveShellConfig
+
   , StageInput      = T.StageInput
   , StageOutput     = T.StageOutput
   , Stage           = T.Stage
   , PipelineConfig  = T.PipelineConfig
-  , ShellConfig     = T.ShellConfig
   , SSHConfig       = T.SSHConfig
   , TLSConfig       = T.TLSConfig
   , SandboxPolicy   = T.SandboxPolicy
@@ -42,70 +60,90 @@ in
 
   -- ---------------------------------------------------------------------------
   -- Defaults (the opinionated starting points)
-  -- Lib.defaults.devContainer, Lib.defaults.defaultNix, etc.
   -- ---------------------------------------------------------------------------
   , defaults = defaults
 
   -- ---------------------------------------------------------------------------
   -- Convenience constructors
-  -- Reduce boilerplate for the most common patterns.
   -- ---------------------------------------------------------------------------
 
-  -- Build a PackageRef pointing at a nixpkgs attribute
+  -- Package references
   , nixpkgs = \(attrPath : Text) ->
       { attrPath = attrPath, flakeInput = None Text } : T.PackageRef
 
-  -- Build a PackageRef pointing at a flake input's package
   , flakePackage = \(input : Text) -> \(attrPath : Text) ->
       { attrPath = attrPath, flakeInput = Some input } : T.PackageRef
 
-  -- Build a Custom PackageLayer with a name and list of refs
   , customLayer = \(name : Text) -> \(packages : List T.PackageRef) ->
       T.PackageLayer.Custom { name = name, packages = packages }
 
-  -- Build a simple, pure stage with no declared I/O and no condition
+  -- ---------------------------------------------------------------------------
+  -- Shell constructors
   --
+  -- Lib.minimalShell "/bin/sh"   → Shell.Minimal { shell = "/bin/sh" }
+  -- Lib.minimalShell "/bin/nu"   → Shell.Minimal { shell = "/bin/nu" }
+  --
+  -- Lib.interactiveShell "/bin/fish" "gruvbox" True ["bobthefish","bass","grc"]
+  --   → Shell.Interactive { shell = "/bin/fish", colorScheme = "gruvbox", ... }
+  -- ---------------------------------------------------------------------------
+  , minimalShell = \(shell : Text) ->
+      T.Shell.Minimal { shell = shell }
+
+  , interactiveShell =
+      \(shell : Text)
+      -> \(colorScheme : Text)
+      -> \(viBindings : Bool)
+      -> \(plugins : List Text)
+      -> T.Shell.Interactive
+           { shell       = shell
+           , colorScheme = colorScheme
+           , viBindings  = viBindings
+           , plugins     = plugins
+           }
+
+  -- ---------------------------------------------------------------------------
+  -- Stage constructors (unchanged)
+  -- ---------------------------------------------------------------------------
   , simpleStage =
       \(name : Text)
       -> \(command : Text)
       -> \(failureMode : T.FailureMode)
-      ->  { name        = name
-          , command     = command
-          , failureMode = failureMode
-          , inputs      = [ T.StageInput.Workspace ]
-          , outputs     = [ T.StageOutput.None ]
-          , pure        = True
+      ->  { name           = name
+          , command        = command
+          , failureMode    = failureMode
+          , inputs         = [ T.StageInput.Workspace ]
+          , outputs        = [ T.StageOutput.None ]
+          , pure           = True
           , impurityReason = None Text
-          , condition   = None Text
+          , condition      = None Text
           } : T.Stage
 
-  -- Build a Stage that only runs when a given env var is set
   , conditionalStage =
       \(name : Text)
       -> \(command : Text)
       -> \(failureMode : T.FailureMode)
       -> \(condition : Text)
-      ->  { name        = name
-          , command     = command
-          , failureMode = failureMode
-          , inputs      = [ T.StageInput.Workspace ]
-          , outputs     = [ T.StageOutput.None ]
-          , pure = False
+      ->  { name           = name
+          , command        = command
+          , failureMode    = failureMode
+          , inputs         = [ T.StageInput.Workspace ]
+          , outputs        = [ T.StageOutput.None ]
+          , pure           = False
           , impurityReason = Some "Cannot guarantee environment variable is set"
-          , condition   = Some condition
+          , condition      = Some condition
           } : T.Stage
 
-  -- Build a BuildTime EnvVar (safe for config.Env, no store paths)
+  -- ---------------------------------------------------------------------------
+  -- EnvVar constructors (unchanged)
+  -- ---------------------------------------------------------------------------
   , buildEnv = \(name : Text) -> \(value : Text) ->
       { name = name, value = value, placement = T.EnvVarPlacement.BuildTime }
         : T.EnvVar
 
-  -- Build a StartTime EnvVar (store-path-bearing, goes in start.sh)
   , startEnv = \(name : Text) -> \(value : Text) ->
       { name = name, value = value, placement = T.EnvVarPlacement.StartTime }
         : T.EnvVar
 
-  -- Build a UserProvided EnvVar (injected at container run time)
   , runtimeEnv = \(name : Text) -> \(value : Text) ->
       { name = name, value = value, placement = T.EnvVarPlacement.UserProvided }
         : T.EnvVar

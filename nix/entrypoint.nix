@@ -1,30 +1,37 @@
 # polar-container-lib/nix/entrypoint.nix
 #
 # Generates the container entrypoint script (start.sh) from a translated
-# ContainerConfig. Each phase is a discrete string fragment that is
-# conditionally included based on the config. The final script is a
-# pkgs.writeShellScriptBin derivation so it lands in /bin/start.sh
-# via buildEnv symlinks — a stable, arch-correct path.
+# ContainerConfig. Only invoked for non-minimal containers — minimal containers
+# exec their entrypoint or shell binary directly, no start.sh involved.
 #
 # Phase order:
 #   1. Preamble       (set -euo pipefail, helpers)
-#   2. Store-path exports (StartTime env vars — arch-correct because this
-#                          is a derivation evaluated in target-arch context)
-#   3. User creation  (optional, reads CREATE_USER/CREATE_UID/CREATE_GID)
-#   4. Nix daemon     (optional, provisions nixbld users, starts daemon)
-#   5. Arch config    (aarch64 sandbox/seccomp detection)
-#   6. Cargo cache    (writable target dir, avoids writing into bind mount)
-#   7. SSH server     (optional, Dropbear)
-#   8. Banner         (summary of what started)
-#   9. Exec handoff   (mode-specific: shell, pipeline runner, agent process)
+#   2. Store-path exports (StartTime env vars)
+#   3. User creation  (optional)
+#   4. AI setup       (optional)
+#   5. Sudo setup     (optional, GPU workloads)
+#   6. Arch config    (aarch64 sandbox/seccomp detection)
+#   7. Nix daemon     (optional)
+#   8. SFTP symlink   (optional, SSH support)
+#   9. Cargo cache    (writable target dir)
+#  10. SSH server     (optional, Dropbear)
+#  11. Banner
+#  12. Exec handoff   (mode-specific: shell, pipeline runner, agent)
 
 { pkgs
-, cfg       # Translated config from from-dhall.nix
-, devEnv    # The buildEnv derivation containing all resolved packages
+, cfg
+, devEnv
 }:
 
 let
   lib = pkgs.lib;
+
+  # The configured shell binary — used throughout for shell-specific setup.
+  # Defaults to fish for interactive containers that don't set shell explicitly.
+  shellBin =
+    if cfg.shell != null
+    then cfg.shell.shell
+    else "/bin/fish";
 
   # ---------------------------------------------------------------------------
   # Phase 1: Preamble
@@ -33,39 +40,35 @@ let
     #!/usr/bin/env bash
     set -euo pipefail
 
-    ##############################################################################
-    # Helpers
-    ##############################################################################
     die()  { echo >&2 "error: $*"; exit 1; }
     need() { command -v "$1" >/dev/null || die "missing binary: $1"; }
   '';
 
   # ---------------------------------------------------------------------------
   # Phase 2: Store-path exports
-  # These are evaluated in the target-arch derivation context, so the store
-  # paths are always correct for the architecture being built.
-  # This is intentionally different from config.Env — see EnvVarPlacement.
+  # Only include paths that are actually in the container's closure.
+  # Removed hardcoded fish plugin paths — those only belong in fish containers.
   # ---------------------------------------------------------------------------
   phaseStorePathExports =
     let
-      # Built-in store-path exports that every container needs
       builtinExports = ''
         ##############################################################################
         # Store-path exports (arch-correct — evaluated in target derivation context)
         ##############################################################################
-        export BOB_THE_FISH="${pkgs.fishPlugins.bobthefish}"
-        export FISH_BASS="${pkgs.fishPlugins.bass}"
-        export FISH_GRC="${pkgs.fishPlugins.grc}"
-        export LIBCLANG_PATH="${pkgs.llvmPackages_19.libclang.lib}/lib"
         export LOCALE_ARCHIVE="${pkgs.glibcLocalesUtf8}/lib/locale/locale-archive"
         export COREUTILS="${pkgs.uutils-coreutils-noprefix}"
         export OPENSSL_DIR="${pkgs.openssl.dev}"
         export OPENSSL_LIB_DIR="${pkgs.openssl.out}/lib"
         export OPENSSL_INCLUDE_DIR="${pkgs.openssl.dev}/include"
-        export PKG_CONFIG_PATH="${pkgs.openssl.dev}/lib/pkgconfig:$PKG_CONFIG_PATH"
+        export PKG_CONFIG_PATH="${pkgs.openssl.dev}/lib/pkgconfig:''${PKG_CONFIG_PATH:-}"
+      '' + lib.optionalString (cfg.shell != null && cfg.shell.type == "interactive-fish") ''
+        export BOB_THE_FISH="${pkgs.fishPlugins.bobthefish}"
+        export FISH_BASS="${pkgs.fishPlugins.bass}"
+        export FISH_GRC="${pkgs.fishPlugins.grc}"
+      '' + lib.optionalString (cfg.mode == "dev" || cfg.mode == "ci" || cfg.mode == "pipeline") ''
+        export LIBCLANG_PATH="${pkgs.llvmPackages_19.libclang.lib}/lib"
       '';
 
-      # User-supplied StartTime env vars
       userExports = lib.concatMapStrings
         (ev: "export ${ev.name}=${lib.escapeShellArg ev.value}\n")
         cfg.startTimeEnv;
@@ -109,35 +112,31 @@ let
               /home/$user/.ssh
 
           need rsync
-          rsync -a --chown=$uid:$gid --exclude '.config/fish*' \
+          rsync -a --chown=$uid:$gid \
               /root/ /home/$user/ || true
 
           chmod 1777 /tmp
 
           ${if shellBin == "/bin/nu" then ''
-          # Nushell skeleton
           mkdir -p /home/$user/.config/nushell
           install -Dm644 ${cfg.user.skeletonPath}/config.nu \
                          /home/$user/.config/nushell/config.nu
           install -Dm644 ${cfg.user.skeletonPath}/env.nu \
                          /home/$user/.config/nushell/env.nu
-          # Copy system plugin registry as the user's starting point
           if [[ -f /etc/nushell/plugin-registry.msgpackz ]]; then
             install -Dm644 /etc/nushell/plugin-registry.msgpackz \
                            /home/$user/.config/nushell/plugin.msgpackz
           fi
           '' else ''
-          # Fish skeleton
           install -Dm644 ${cfg.user.skeletonPath}/config.fish \
                          /home/$user/.config/fish/config.fish
           touch /home/$user/.config/fish/fish_variables
           ''}
+
           chown -R "$uid:$gid" /home/$user
           chmod -R 755 /home/$user
           chmod u+w /home/$user
 
-          # Supplemental groups (e.g. video/render for GPU, audio, etc.)
-          # Generated from cfg.user.supplementalGroups at build time.
           SUPP_GROUPS="${builtins.concatStringsSep "," (
             map (g: "${g.name}:${toString g.gid}") cfg.user.supplementalGroups
           )}"
@@ -184,9 +183,6 @@ let
       ##############################################################################
       # AI tooling setup
       ##############################################################################
-
-      # llama.cpp models — volume-mounted at /opt/llama-models
-      # Symlink into the user's cache after user is created
       if [[ -d /opt/llama-models ]]; then
         mkdir -p /home/$DEV_USER/.cache/huggingface
         ln -sfn /opt/llama-models /home/$DEV_USER/.cache/llama.cpp
@@ -194,81 +190,29 @@ let
         chown -h "$DEV_UID:$DEV_GID" /home/$DEV_USER/.cache/llama.cpp
         chown -h "$DEV_UID:$DEV_GID" /home/$DEV_USER/.cache/huggingface/hub
       fi
-
-      # Ollama data — volume-mounted at /opt/ollama
-      # Symlink into the user's home after user is created
       if [[ -d /opt/ollama ]]; then
         ln -sfn /opt/ollama /home/$DEV_USER/.ollama
         chown -h "$DEV_UID:$DEV_GID" /home/$DEV_USER/.ollama
       fi
-
-      # Pi agent state — volume-mounted at /opt/pi
-      # Symlink into the user's home after user is created
-      # models.json and sessions persist across container restarts
       if [[ -d /opt/pi ]]; then
         ln -sfn /opt/pi /home/$DEV_USER/.pi
         chown -h "$DEV_UID:$DEV_GID" /home/$DEV_USER/.pi
-      else
-        # Fallback: write models.json ephemerally if no persistent volume
-        PI_CONFIG_DIR="/home/$DEV_USER/.pi/agent"
-        mkdir -p "$PI_CONFIG_DIR"
-        cat > "$PI_CONFIG_DIR/models.json" << 'PIEOF'
-      {
-        "providers": {
-          "ollama": {
-            "baseUrl": "http://localhost:8080/v1",
-            "api": "openai-completions",
-            "apiKey": "dummy",
-            "compat": {
-              "supportsDeveloperRole": false,
-              "supportsReasoningEffort": false
-            },
-            "models": [
-              { "id": "local-model" }
-            ]
-          }
-        }
-      }
-      PIEOF
-        chown -R "$DEV_UID:$DEV_GID" "$PI_CONFIG_DIR"
       fi
-
-      # Set LD_LIBRARY_PATH to include ollama's lib dir so libggml-cuda.so
-      # and libggml-base.so.0 are findable at runtime
       if command -v ollama >/dev/null 2>&1; then
         OLLAMA_BIN=$(readlink -f $(which ollama))
         OLLAMA_LIB=$(dirname "$OLLAMA_BIN")/../lib/ollama
         if [[ -d "$OLLAMA_LIB" ]]; then
           export LD_LIBRARY_PATH="$OLLAMA_LIB:''${LD_LIBRARY_PATH:-}"
-          ${if shellBin == "/bin/nu" then ''
-          printf '$env.LD_LIBRARY_PATH = ("%s:" + ($env.LD_LIBRARY_PATH? | default ""))\n' "$OLLAMA_LIB" \
-            >> /home/$DEV_USER/.config/nushell/env.nu
-          '' else ''
-          echo "set -gx LD_LIBRARY_PATH $OLLAMA_LIB \$LD_LIBRARY_PATH" \
-            >> /home/$DEV_USER/.config/fish/config.fish
-          ''}
         fi
       fi
-
-      # Include host NVIDIA driver libs if present (NixOS: /run/opengl-driver/lib)
-      # Guard makes this a no-op on AMD/CPU systems
       if [[ -d /run/opengl-driver/lib ]]; then
         export LD_LIBRARY_PATH="/run/opengl-driver/lib:''${LD_LIBRARY_PATH:-}"
-        ${if shellBin == "/bin/nu" then ''
-        printf '$env.LD_LIBRARY_PATH = ("/run/opengl-driver/lib:" + ($env.LD_LIBRARY_PATH? | default ""))\n' \
-          >> /home/$DEV_USER/.config/nushell/env.nu
-        '' else ''
-        echo "set -gx LD_LIBRARY_PATH /run/opengl-driver/lib \$LD_LIBRARY_PATH" \
-          >> /home/$DEV_USER/.config/fish/config.fish
-        ''}
       fi
     ''
     else "";
 
   # ---------------------------------------------------------------------------
-  # Phase 3.5: Sudo setup (optional — only when supplementalGroups present)
-  # Sets up passwordless sudo for llama-server so the container user can
-  # run GPU workloads that require uid 0 on the host KFD driver.
+  # Phase 3.5: Sudo setup (optional)
   # ---------------------------------------------------------------------------
   phaseSudo =
     if cfg.user.supplementalGroups != []
@@ -276,19 +220,12 @@ let
       ##############################################################################
       # Sudo setup for GPU workloads
       ##############################################################################
-      # The KFD driver requires the calling process to be uid 0 on the host.
-      # With --userns=keep-id, uid 0 inside maps to uid 1000 outside, so
-      # llama-server fails to initialize ROCm. We set up passwordless sudo
-      # for llama-server so the container user can elevate for GPU access.
-      # /bin is a read-only Nix symlink farm — use /usr/bin which is a
-      # writable overlay layer and is in PATH.
       SUDO_REAL=$(readlink -f /bin/sudo 2>/dev/null || \
         find /nix/store -name "sudo" -type f 2>/dev/null | head -1)
       if [[ -n "$SUDO_REAL" ]]; then
         cp "$SUDO_REAL" /usr/bin/sudo
         chown root:root /usr/bin/sudo
         chmod 4755 /usr/bin/sudo
-        # Create minimal /etc/sudoers — required before sudoers.d is read
         if [[ ! -f /etc/sudoers ]]; then
           echo "root ALL=(ALL:ALL) ALL"     > /etc/sudoers
           echo "#includedir /etc/sudoers.d" >> /etc/sudoers
@@ -301,7 +238,6 @@ let
             > /etc/sudoers.d/llama-server
           chmod 440 /etc/sudoers.d/llama-server
         fi
-        # Create minimal PAM config for sudo — pam_permit allows all
         mkdir -p /etc/pam.d
         printf '%s\n' \
           "auth       sufficient   pam_permit.so" \
@@ -321,12 +257,8 @@ let
       let
         buildUserBlock =
           if cfg.nix.buildUserCount.dynamic
-          then ''
-            cpus=$(command -v nproc >/dev/null 2>&1 && nproc || getconf _NPROCESSORS_ONLN)
-          ''
-          else ''
-            cpus=${toString cfg.nix.buildUserCount.fixed}
-          '';
+          then "cpus=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN)"
+          else "cpus=${toString cfg.nix.buildUserCount.fixed}";
       in ''
         ##############################################################################
         # Nix build users and daemon
@@ -354,7 +286,6 @@ let
         done
 
         member_list=$(IFS=, ; echo "''${members[*]}")
-
         grep -v '^nixbld:' /etc/group   > /etc/group.new
         grep -v '^nixbld:' /etc/gshadow > /etc/gshadow.new 2>/dev/null || true
         echo "nixbld:x:30000:''${member_list}" >> /etc/group.new
@@ -362,18 +293,16 @@ let
         mv -f /etc/group.new   /etc/group
         mv -f /etc/gshadow.new /etc/gshadow 2>/dev/null || true
 
-        # Materialize the Nix DB from the pre-seeded read-only store path
-        # into writable upper-layer files. The daemon requires a writable DB.
         if [[ -L /nix/var/nix/db/db.sqlite ]]; then
             db_src="$(dirname "$(readlink -f /nix/var/nix/db/db.sqlite)")"
             tmp="$(mktemp -d)"
             cp -r "$db_src/." "$tmp/"
-            rm -f   /nix/var/nix/db/db.sqlite \
-                    /nix/var/nix/db/db.sqlite-shm \
-                    /nix/var/nix/db/db.sqlite-wal \
-                    /nix/var/nix/db/big-lock \
-                    /nix/var/nix/db/reserved \
-                    /nix/var/nix/db/schema
+            rm -f /nix/var/nix/db/db.sqlite \
+                  /nix/var/nix/db/db.sqlite-shm \
+                  /nix/var/nix/db/db.sqlite-wal \
+                  /nix/var/nix/db/big-lock \
+                  /nix/var/nix/db/reserved \
+                  /nix/var/nix/db/schema
             cp -r "$tmp/." /nix/var/nix/db/
             rm -rf "$tmp"
             chmod 644 /nix/var/nix/db/db.sqlite
@@ -381,13 +310,14 @@ let
             chmod 600 /nix/var/nix/db/reserved
         fi
 
-        if ! pgrep -x nix-daemon >/dev/null; then
+        if ! { command -v pgrep >/dev/null && pgrep -x nix-daemon >/dev/null; } \
+           && ! { ps aux 2>/dev/null | grep -q "[n]ix-daemon"; }; then
             PATH=/nix/var/nix/profiles/default/bin:$PATH \
                 /bin/nix-daemon --daemon &
         fi
       ''
     else ''
-      # Nix daemon disabled for this container mode (${cfg.mode})
+      # Nix daemon disabled (${cfg.mode} mode)
     '';
 
   # ---------------------------------------------------------------------------
@@ -398,15 +328,11 @@ let
     then
       let
         sandboxBlock =
-          if cfg.nix.sandboxPolicy == "enabled" then ''
-            printf "\nsandbox = true\n" >> /etc/nix/nix.conf
-          ''
-          else if cfg.nix.sandboxPolicy == "disabled" then ''
-            printf "\nsandbox = false\n" >> /etc/nix/nix.conf
-          ''
-          else /* auto */ ''
-            # Auto: detect qemu-user via CPU implementer field.
-            # 0x00 = qemu synthetic ARM CPU; all real hardware reports non-zero.
+          if cfg.nix.sandboxPolicy == "enabled" then
+            ''printf "\nsandbox = true\n" >> /etc/nix/nix.conf''
+          else if cfg.nix.sandboxPolicy == "disabled" then
+            ''printf "\nsandbox = false\n" >> /etc/nix/nix.conf''
+          else ''
             CPU_IMPLEMENTER=$(grep "CPU implementer" /proc/cpuinfo | head -1 | awk '{print $NF}')
             if [[ "$CPU_IMPLEMENTER" == "0x00" ]]; then
                 printf "\nsandbox = false\n"        >> /etc/nix/nix.conf
@@ -427,31 +353,23 @@ let
     else "";
 
   # ---------------------------------------------------------------------------
-  # Phase 6: SFTP server symlink
-  # Dropbear has a compiled-in SFTPSERVER_PATH (typically /usr/libexec/sftp-server).
-  # The openssh sftp-server binary lives in the Nix store and is not automatically
-  # linked to that path. Create the symlink here so dropbear can find it regardless
-  # of whether SSH autostart is configured — remote IDEs (Zed, etc.) need it.
+  # Phase 6: SFTP symlink
   # ---------------------------------------------------------------------------
   phaseSftpSymlink =
     if cfg.ssh != null then ''
       ##############################################################################
-      # SFTP server symlink (for dropbear + remote IDE support)
+      # SFTP server symlink
       ##############################################################################
-      # Dropbear spawns the login shell to execute the SFTP subsystem command.
-      # The login shell (fish or nu) can only find binaries in PATH, not arbitrary
-      # absolute paths. Symlinking sftp-server into /bin makes it findable
-      # regardless of what path the client requests.
       if [[ -f "${pkgs.openssh}/libexec/sftp-server" ]]; then
         ln -sf "${pkgs.openssh}/libexec/sftp-server" /bin/sftp-server
-        # Also satisfy the NixOS conventional path that some clients hardcode
         mkdir -p /run/current-system/sw/libexec
         ln -sf "${pkgs.openssh}/libexec/sftp-server" /run/current-system/sw/libexec/sftp-server
       fi
     ''
     else "";
 
-  # Phase 7: Cargo cache dir
+  # ---------------------------------------------------------------------------
+  # Phase 7: Cargo cache
   # ---------------------------------------------------------------------------
   phaseCargoCache = ''
     ##############################################################################
@@ -465,7 +383,7 @@ let
   '';
 
   # ---------------------------------------------------------------------------
-  # Phase 7: SSH server (optional)
+  # Phase 8: SSH server
   # ---------------------------------------------------------------------------
   phaseSSH =
     if cfg.ssh != null
@@ -475,7 +393,7 @@ let
         ##############################################################################
         # SSH server (Dropbear)
         ##############################################################################
-        DROPBEAR_STATUS='autorun not configured — run ssh-start to start manually'
+        DROPBEAR_STATUS='not started — set DROPBEAR_ENABLE=1 or run ssh-start'
 
         if [[ "''${DROPBEAR_ENABLE:-0}" == "1" ]]; then
           SSH_DIR="/home/$DEV_USER/.ssh"
@@ -498,25 +416,19 @@ let
 
           if [[ ! -f "$RSA_KEY" ]];     then dropbearkey -t rsa    -f "$RSA_KEY"     > /dev/null; fi
           if [[ ! -f "$ED25519_KEY" ]]; then dropbearkey -t ed25519 -f "$ED25519_KEY" > /dev/null; fi
-
-          # Chown host keys to the container user so dropbear can run as that
-          # user rather than root. This allows the user to manage the dropbear
-          # process (ssh-stop) without needing sudo.
           chown "$DEV_UID:$DEV_GID" "$RSA_KEY" "$ED25519_KEY" 2>/dev/null || true
 
           if [[ -f "$AUTH_KEYS" ]]; then
             chroot --userspec="$DEV_UID:$DEV_GID" / \
               dropbear -F -E -e -a -s \
-                -r "$RSA_KEY" \
-                -r "$ED25519_KEY" \
+                -r "$RSA_KEY" -r "$ED25519_KEY" \
                 -p "0.0.0.0:$DROPBEAR_PORT" \
                 -P "$SSH_DIR/dropbear.pid" &
-
             sleep 1
             if pgrep -x dropbear >/dev/null 2>&1; then
               DROPBEAR_STATUS="running on port $DROPBEAR_PORT"
             else
-              DROPBEAR_STATUS="failed to start (check logs)"
+              DROPBEAR_STATUS="failed to start"
             fi
           fi
         fi
@@ -526,38 +438,25 @@ let
     '';
 
   # ---------------------------------------------------------------------------
-  # Phase 8: Banner
+  # Phase 9: Banner
   # ---------------------------------------------------------------------------
   phaseBanner = ''
     ##############################################################################
     # Banner
     ##############################################################################
-    echo "────────────────────────────────────────────────────────────────────────────"
-    echo " 🚀  Container ready! [${cfg.name}] [mode: ${cfg.mode}]"
-    echo
+    cat /etc/container-info
     echo " • User ............. $DEV_USER  (uid=$DEV_UID / gid=$DEV_GID)"
     echo " • SSH server ....... $DROPBEAR_STATUS"
     if mountpoint -q /workspace 2>/dev/null; then
       echo " • Volume mount ..... /workspace is mounted"
-    else
-      echo " • Volume mount ..... none detected"
     fi
-    echo
-    echo " ✅  Environment configuration complete"
-    echo " 🆘  Type 'container-help' for container usage instructions"
+    echo " 🆘  Type 'container-help' for usage instructions"
     echo "────────────────────────────────────────────────────────────────────────────"
   '';
 
   # ---------------------------------------------------------------------------
-  # Phase 9: Exec handoff
-  # Mode-specific final exec. Each mode hands off to a different process.
+  # Phase 10: Exec handoff
   # ---------------------------------------------------------------------------
-  # Resolve the configured shell binary — defaults to fish if shell cfg is null
-  shellBin =
-    if cfg.shell != null
-    then cfg.shell.shell
-    else "/bin/fish";
-
   phaseExec =
     if cfg.mode == "dev" then ''
       ##############################################################################
@@ -577,7 +476,7 @@ let
       ##############################################################################
       # Exec handoff → pipeline runner
       ##############################################################################
-      exec /bin/pipeline-runner "''${PIPELINE_STAGE:-all}" "$@"
+      PIPELINE_TARGET="''${PIPELINE_STAGE:-all}" exec /bin/pipeline-runner "$@"
     ''
     else if cfg.mode == "agent" then ''
       ##############################################################################

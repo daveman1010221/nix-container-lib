@@ -270,7 +270,7 @@ def resolve-stage-input [
     if ($input_desc.ref? | default "") != "" {
         # This is a reference to a top-level pinned input.
         let ref_name = $input_desc.ref
-        let input_data = ($pinned_inputs | get -i $ref_name)
+        let input_data = ($pinned_inputs | get -o $ref_name)
         if $input_data == null {
             log-warn $"input ref '($ref_name)' not found in pinned inputs" --component "resolve"
             return { artifact_id: "", type: "ref", ref: $ref_name }
@@ -305,14 +305,14 @@ def resolve-stage-input [
         # Reference to a prior stage's output artifact.
         let src_stage = $input_desc.stage
         let src_artifact = $input_desc.artifact
-        let stage_data = ($stage_outputs | get -i $src_stage)
+        let stage_data = ($stage_outputs | get -o $src_stage)
 
         if $stage_data == null {
             log-warn $"stage-output ref: stage '($src_stage)' has no recorded outputs" --component "resolve"
             return { artifact_id: "", type: "stage-output", stage: $src_stage, artifact: $src_artifact }
         }
 
-        let artifact_data = ($stage_data | get -i $src_artifact)
+        let artifact_data = ($stage_data | get -o $src_artifact)
         if $artifact_data == null {
             log-warn $"stage-output ref: artifact '($src_artifact)' not found in stage '($src_stage)'" --component "resolve"
             return { artifact_id: "", type: "stage-output", stage: $src_stage, artifact: $src_artifact }
@@ -407,7 +407,7 @@ def execute-stage [
         "always" => false
         "previous_success" => ($prior_exit != 0)
         _ => {
-            let val = ($env | get -i $condition | default "")
+            let val = ($env | get -o $condition | default "")
             ($val | is-empty)
         }
     }
@@ -520,6 +520,17 @@ def main [manifest_path?: string, target_stage?: string] {
     let pipeline_name = $manifest.name
     let artifact_dir = $manifest.artifactDir
     let working_dir = $manifest.workingDir
+
+    # Guard: if working_dir doesn't exist, warn and use a temp dir.
+    # This happens in smoke tests and environments where /workspace isn't mounted.
+    let working_dir = if ($working_dir | path exists) {
+        $working_dir
+    } else {
+        let fallback = (mktemp -d)
+        log-warn $"working_dir '($working_dir)' does not exist — using fallback ($fallback)" --component "main"
+        $fallback
+    }
+
     let stages = $manifest.stages
 
     mkdir $artifact_dir

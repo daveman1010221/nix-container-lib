@@ -1,8 +1,6 @@
 -- polar-container-lib/dhall/defaults.dhall
 --
 -- Opinionated default configurations for common container archetypes.
--- These encode the accumulated decisions from the polar dev container
--- so they don't have to be re-derived per project.
 --
 -- Usage pattern:
 --   let defaults = ./defaults.dhall
@@ -10,15 +8,51 @@
 --
 -- The // operator performs a shallow record merge, so any field you
 -- specify overrides the default. Fields you omit inherit the default.
+
 let T = ./types.dhall
 
-let defaultShell
-    : T.ShellConfig
-    = { shell = "/bin/fish"
-      , colorScheme = "gruvbox"
-      , viBindings = True
-      , plugins = [ "bobthefish", "bass", "grc" ]
-      }
+-- ---------------------------------------------------------------------------
+-- Shell defaults
+-- ---------------------------------------------------------------------------
+
+-- Minimal POSIX shell (dash). Tiny, strict, no config beyond /etc/profile.
+-- Use for init containers or any minimal container that needs a shell for
+-- scripting but not interactive use.
+let minimalDashShell
+    : T.Shell
+    = T.Shell.Minimal { shell = "/bin/sh" }
+
+-- Minimal nushell. vi mode, show_banner false, basic completions.
+-- No plugins, no themes, no atuin, no starship, no direnv.
+-- Use for minimal containers where nushell's structured data handling
+-- is useful but full interactive ergonomics are not required.
+let minimalNuShell
+    : T.Shell
+    = T.Shell.Minimal { shell = "/bin/nu" }
+
+-- Full interactive fish shell with bobthefish, atuin, starship, direnv.
+let defaultInteractiveFishShell
+    : T.Shell
+    = T.Shell.Interactive
+        { shell = "/bin/fish"
+        , colorScheme = "gruvbox"
+        , viBindings = True
+        , plugins = [ "bobthefish", "bass", "grc" ]
+        }
+
+-- Full interactive nushell with plugins, atuin, starship, direnv.
+let defaultInteractiveNuShell
+    : T.Shell
+    = T.Shell.Interactive
+        { shell = "/bin/nu"
+        , colorScheme = "gruvbox"
+        , viBindings = True
+        , plugins = [] : List Text
+        }
+
+-- ---------------------------------------------------------------------------
+-- Infrastructure defaults (unchanged)
+-- ---------------------------------------------------------------------------
 
 let defaultNix
     : T.NixConfig
@@ -54,6 +88,10 @@ let defaultPipelineOutputs
       , assertions = [] : List T.PipelineOutputAssertion
       }
 
+-- ---------------------------------------------------------------------------
+-- Container archetypes
+-- ---------------------------------------------------------------------------
+
 let devContainer
     : T.ContainerConfig
     = { name = "unnamed-dev"
@@ -65,7 +103,7 @@ let devContainer
         , T.PackageLayer.Toolchain
         , T.PackageLayer.Pipeline
         ]
-      , shell = Some defaultShell
+      , shell = Some defaultInteractiveFishShell
       , pipeline = None T.PipelineConfig
       , ssh = Some defaultSSH
       , tls = None T.TLSConfig
@@ -85,7 +123,7 @@ let ciContainer
           , mode = T.Mode.CI
           , packageLayers =
             [ T.PackageLayer.Core, T.PackageLayer.CI, T.PackageLayer.Pipeline ]
-          , shell = None T.ShellConfig
+          , shell = None T.Shell
           , ssh = None T.SSHConfig
           , user = defaultUser // { createUser = False }
           , entrypoint = None Text
@@ -99,7 +137,7 @@ let agentContainer
       //  { name = "unnamed-agent"
           , mode = T.Mode.Agent
           , packageLayers = [ T.PackageLayer.Core, T.PackageLayer.Agent ]
-          , shell = None T.ShellConfig
+          , shell = None T.Shell
           , ssh = None T.SSHConfig
           , tls = Some defaultTLS
           , user = defaultUser // { createUser = False }
@@ -119,12 +157,34 @@ let pipelineContainer
           , staticGid = Some 65532
           }
 
+-- ---------------------------------------------------------------------------
+-- minimalContainer
+--
+-- The smallest possible container. Uses Micro layer only.
+-- shell = None → entrypoint binary is required.
+-- shell = Some (Shell.Minimal ...) → that shell is the entrypoint.
+--
+-- No Nix daemon. No user creation. No start.sh. OCI Cmd is either:
+--   - ["/bin/<entrypoint>"]  when entrypoint is set
+--   - ["/bin/nu"]            when shell = Minimal { shell = "/bin/nu" }
+--   - ["/bin/sh"]            when shell = Minimal { shell = "/bin/sh" }
+--
+-- Typical customization:
+--   defaults.minimalContainer //
+--     { name = "my-tool"
+--     , entrypoint = Some "my-binary"
+--     , packageLayers =
+--         [ PackageLayer.Micro
+--         , customLayer "my-tool" [ nixpkgs "my-package" ]
+--         ]
+--     }
+-- ---------------------------------------------------------------------------
 let minimalContainer
     : T.ContainerConfig
     = { name = "unnamed-minimal"
       , mode = T.Mode.Minimal
-      , packageLayers = [ T.PackageLayer.Core ]
-      , shell = None T.ShellConfig
+      , packageLayers = [ T.PackageLayer.Micro ]
+      , shell = None T.Shell
       , pipeline = None T.PipelineConfig
       , ssh = None T.SSHConfig
       , tls = None T.TLSConfig
@@ -142,11 +202,16 @@ in  { devContainer
     , agentContainer
     , pipelineContainer
     , minimalContainer
-    , defaultShell
+    , minimalDashShell
+    , minimalNuShell
+    , defaultInteractiveFishShell
+    , defaultInteractiveNuShell
     , defaultNix
     , defaultTLS
     , defaultSSH
     , defaultUser
     , defaultAi
     , defaultPipelineOutputs
+    -- Kept for backwards compatibility — same as defaultInteractiveFishShell
+    , defaultShell = defaultInteractiveFishShell
     }

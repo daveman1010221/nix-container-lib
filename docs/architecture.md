@@ -142,7 +142,7 @@ Choose one or the other.
 *File: `nix/container.nix`*
 
 `mkContainer` assembles the final OCI image. Key decisions:
-- `maxLayers = 100` for fine-grained layer caching
+- `maxLayers = 20` for fine-grained layer caching
 - `closureInfo` registers ALL derivations in image contents, not just `devEnv`
 - `config.Env` receives only `BuildTime` env vars (no store paths)
 - `config.Cmd = [ "/bin/start.sh" ]` — stable path via `buildEnv` symlink

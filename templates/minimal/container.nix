@@ -17,7 +17,7 @@
   };
   packageLayers = [
     (u:
-      u.Core)
+      u.Micro)
     (u:
       u.Custom {
         name = "my-entrypoint";

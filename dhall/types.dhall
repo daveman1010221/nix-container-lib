@@ -1,4 +1,4 @@
--- polar-container-lib/dhall/lib/types.dhall
+-- polar-container-lib/dhall/types.dhall
 --
 -- Canonical type definitions for the polar container library.
 -- All types are defined here and re-exported via prelude.dhall.
@@ -19,6 +19,7 @@ let PackageRef = { attrPath : Text, flakeInput : Optional Text }
 
 let PackageLayer =
       < Core
+      | Micro
       | CI
       | Dev
       | Toolchain
@@ -64,13 +65,10 @@ let PipelineOutputArtifact =
 
 let PipelineOutputAssertion = { name : Text, fromStage : Text }
 
--- TODO: Make each of these fields optional, we dojn't always need assertiosn, and some pipelines don't always produce artifacts
 let PipelineOutputs =
       { artifacts : List PipelineOutputArtifact
       , assertions : List PipelineOutputAssertion
       }
-
-let PipelineScripts = { runner : Text, attestedBuild : Text }
 
 let PipelineConfig =
       { name : Text
@@ -80,12 +78,42 @@ let PipelineConfig =
       , outputs : Optional PipelineOutputs
       }
 
-let ShellConfig =
+-- ---------------------------------------------------------------------------
+-- Shell
+--
+-- Two variants:
+--   Minimal     — just the shell binary + a minimal config. No plugins,
+--                 no themes, no tool integrations. Suitable for minimal
+--                 containers where a shell is needed for scripting but
+--                 interactive ergonomics are not the goal.
+--                 Supported shells: "/bin/sh" (dash), "/bin/nu" (nushell)
+--
+--   Interactive — full interactive experience: plugins, color themes,
+--                 atuin history, starship prompt, direnv integration.
+--                 Only valid in Dev mode containers.
+--                 Supported shells: "/bin/fish", "/bin/nu"
+-- ---------------------------------------------------------------------------
+let MinimalShellConfig =
       { shell : Text
+      -- ^ Path to the shell binary. Currently supported:
+      --   "/bin/sh"  → dash (POSIX, tiny)
+      --   "/bin/nu"  → nushell (minimal config, vi mode)
+      }
+
+let InteractiveShellConfig =
+      { shell : Text
+      -- ^ Path to the shell binary. Currently supported:
+      --   "/bin/fish" → fish with bobthefish, atuin, starship, direnv
+      --   "/bin/nu"   → nushell with plugins, atuin, starship, direnv
       , colorScheme : Text
       , viBindings : Bool
       , plugins : List Text
       }
+
+let Shell =
+      < Minimal     : MinimalShellConfig
+      | Interactive : InteractiveShellConfig
+      >
 
 let SSHConfig = { enable : Bool, port : Natural }
 
@@ -116,7 +144,10 @@ let ContainerConfig =
       { name : Text
       , mode : Mode
       , packageLayers : List PackageLayer
-      , shell : Optional ShellConfig
+      -- ^ shell = None          → no shell in the image (entrypoint required)
+      --   shell = Some (Shell.Minimal ...)     → shell binary + minimal config
+      --   shell = Some (Shell.Interactive ...) → full interactive experience
+      , shell : Optional Shell
       , pipeline : Optional PipelineConfig
       , ssh : Optional SSHConfig
       , tls : Optional TLSConfig
@@ -142,7 +173,9 @@ in  { Mode
     , PipelineOutputAssertion
     , PipelineOutputs
     , PipelineConfig
-    , ShellConfig
+    , MinimalShellConfig
+    , InteractiveShellConfig
+    , Shell
     , SSHConfig
     , TLSConfig
     , SandboxPolicy
