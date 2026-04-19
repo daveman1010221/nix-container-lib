@@ -46,3 +46,34 @@ check:
 dev:
     nix develop
 
+
+# Update all template pins to the current HEAD commit.
+# Run after pushing a new commit to main.
+update-pins:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    COMMIT=$(git rev-parse HEAD)
+    DHALL_HASH=$(dhall hash --file dhall/prelude.dhall)
+    ROOT=$(git rev-parse --show-toplevel)
+    echo "Commit:     $COMMIT"
+    echo "Dhall hash: $DHALL_HASH"
+    echo "Updating container.dhall pins..."
+    for f in templates/*/container.dhall; do
+        sed -i "s|/nix-container-lib/[a-f0-9]*/dhall/prelude.dhall|/nix-container-lib/$COMMIT/dhall/prelude.dhall|" "$f"
+        sed -i "s|sha256:[a-f0-9]*|$DHALL_HASH|" "$f"
+    done
+    echo "Updating flake.nix pins..."
+    for f in templates/*/flake.nix; do
+        sed -i "s|nix-container-lib/[a-f0-9]*\"|nix-container-lib/$COMMIT\"|" "$f"
+    done
+    echo "Rendering container.nix files..."
+    for f in templates/*/container.dhall; do
+        dhall-to-nix < "$f" > "$(dirname $f)/container.nix"
+    done
+    echo "Updating flake locks..."
+    nix flake update
+    for dir in templates/minimal templates/ci templates/agent templates/dev; do
+        (cd "$ROOT/$dir" && nix flake update)
+    done
+    echo "Done. Review with: git diff"
+    echo "Then: git add -A && git commit -m 'chore: update pins to $COMMIT'"
