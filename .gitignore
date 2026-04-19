@@ -21,6 +21,3 @@ Thumbs.db
 
 pi/
 
-templates/ci/flake.lock
-templates/dev/flake.lock
-templates/agent/flake.lock

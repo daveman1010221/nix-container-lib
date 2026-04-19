@@ -8,7 +8,7 @@
   nix = {
     buildUserCount = u:
       u.Dynamic;
-    enableDaemon = true;
+    enableDaemon = false;
     sandboxPolicy = u:
       u.Auto;
     trustedUsers = [ "root" ];

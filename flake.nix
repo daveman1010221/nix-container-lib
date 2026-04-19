@@ -4,9 +4,12 @@
   inputs = {
     nixpkgs.url     = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    uutils-micro.url = "github:daveman1010221/uutils-micro/7cda0210b076f384906d189171c065a1884cad96";
+    uutils-micro.inputs.nixpkgs.follows = "nixpkgs";
+    uutils-micro.inputs.flake-utils.follows = "flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, uutils-micro }:
     let
       # -------------------------------------------------------------------------
       # System-independent outputs

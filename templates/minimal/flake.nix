@@ -5,9 +5,13 @@
     nixpkgs.url             = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url         = "github:numtide/flake-utils";
 
-    nix-container-lib.url = "github:daveman1010221/nix-container-lib";
+    nix-container-lib.url = "github:daveman1010221/nix-container-lib/7b22e78";
     nix-container-lib.inputs.nixpkgs.follows      = "nixpkgs";
     nix-container-lib.inputs.flake-utils.follows  = "flake-utils";
+
+    uutils-micro.url = "github:daveman1010221/uutils-micro/7cda0210b076f384906d189171c065a1884cad96";
+    uutils-micro.inputs.nixpkgs.follows = "nixpkgs";
+    uutils-micro.inputs.flake-utils.follows = "flake-utils";
 
     # Add your entrypoint flake input here:
     # myInput.url = "github:your-org/my-entrypoint";

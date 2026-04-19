@@ -340,6 +340,17 @@ let
       }
     else true;
 
+  hasToolchain = builtins.any (layer: layer {
+      Micro     = false;
+      Core      = false;
+      CI        = false;
+      Dev       = false;
+      Toolchain = true;
+      Pipeline  = false;
+      Agent     = false;
+      Custom    = _: false;
+    }) cfg.packageLayers;
+
 in
   assert tlsAssertion;
   assert baseLayerAssertion;
@@ -363,4 +374,5 @@ in
     entrypoint   = resolvedEntrypoint;
     staticUid    = resolvedStaticUid;
     staticGid    = resolvedStaticGid;
+    hasToolchain = hasToolchain;
   }

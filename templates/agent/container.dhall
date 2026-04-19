@@ -13,8 +13,8 @@
 -- For truly size-critical agents, consider using Micro instead of Core
 -- as the base layer — see the comment in packageLayers below.
 
-let Lib = https://raw.githubusercontent.com/daveman1010221/nix-container-lib/bc1246f3372fbb825de2a85e6f3ca9d0779975d5/dhall/prelude.dhall
-        sha256:42b061b5cb6c7685afaf7e5bc6210640d2c245e67400b22c51e6bfdf85a89e06
+let Lib = https://raw.githubusercontent.com/daveman1010221/nix-container-lib/7b22e78/dhall/prelude.dhall
+        sha256:751c03ffea9c70b8c3fd4c9f45975a968abcf1943c9f5e3d3e9bebb426fb6abd
 let defaults = Lib.defaults
 
 in defaults.agentContainer //

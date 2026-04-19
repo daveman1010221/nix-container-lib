@@ -7,7 +7,12 @@
     rust-overlay.url        = "github:oxalica/rust-overlay";
     rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
 
-    nix-container-lib.url = "github:daveman1010221/nix-container-lib";
+    
+    myNeovimOverlay.url = "github:daveman1010221/nix-neovim";
+    myNeovimOverlay.inputs.nixpkgs.follows    = "nixpkgs";
+    myNeovimOverlay.inputs.flake-utils.url    = "github:numtide/flake-utils";
+
+    nix-container-lib.url = "github:daveman1010221/nix-container-lib/7b22e78";
     nix-container-lib.inputs.nixpkgs.follows      = "nixpkgs";
     nix-container-lib.inputs.flake-utils.follows  = "flake-utils";
 
@@ -16,12 +21,15 @@
     # myTool.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay, nix-container-lib, ... } @ inputs:
+  outputs = { self, nixpkgs, flake-utils, rust-overlay, myNeovimOverlay, nix-container-lib, ... } @ inputs:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
           inherit system;
-          overlays = [ rust-overlay.overlays.default ];
+          overlays = [
+            rust-overlay.overlays.default
+            myNeovimOverlay.overlays.default
+          ];
         };
 
         # -----------------------------------------------------------------------

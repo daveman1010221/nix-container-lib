@@ -65,10 +65,9 @@ let
         export BOB_THE_FISH="${pkgs.fishPlugins.bobthefish}"
         export FISH_BASS="${pkgs.fishPlugins.bass}"
         export FISH_GRC="${pkgs.fishPlugins.grc}"
-      '' + lib.optionalString (cfg.mode == "dev" || cfg.mode == "ci" || cfg.mode == "pipeline") ''
+      '' + lib.optionalString cfg.hasToolchain ''
         export LIBCLANG_PATH="${pkgs.llvmPackages_19.libclang.lib}/lib"
       '';
-
       userExports = lib.concatMapStrings
         (ev: "export ${ev.name}=${lib.escapeShellArg ev.value}\n")
         cfg.startTimeEnv;
@@ -371,16 +370,19 @@ let
   # ---------------------------------------------------------------------------
   # Phase 7: Cargo cache
   # ---------------------------------------------------------------------------
-  phaseCargoCache = ''
-    ##############################################################################
-    # Cargo target cache
-    ##############################################################################
-    CARGO_TARGET_DIR="/var/cache/cargo-target"
-    mkdir -p "$CARGO_TARGET_DIR"
-    chown -R "$DEV_UID:$DEV_GID" /var/cache
-    chmod 0755 "$CARGO_TARGET_DIR"
-    export CARGO_TARGET_DIR
-  '';
+  phaseCargoCache =
+    if cfg.hasToolchain
+    then ''
+      ##############################################################################
+      # Cargo target cache
+      ##############################################################################
+      CARGO_TARGET_DIR="/var/cache/cargo-target"
+      mkdir -p "$CARGO_TARGET_DIR"
+      chown -R "$DEV_UID:$DEV_GID" /var/cache
+      chmod 0755 "$CARGO_TARGET_DIR"
+      export CARGO_TARGET_DIR
+    ''
+    else "";
 
   # ---------------------------------------------------------------------------
   # Phase 8: SSH server

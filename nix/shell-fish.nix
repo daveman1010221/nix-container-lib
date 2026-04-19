@@ -340,63 +340,48 @@ let
     # alias gs 'git status'
   '';
 
-  # ---------------------------------------------------------------------------
-  # Vendor functions
-  #
-  # Two categories:
-  #   static   — plain .fish files shipped verbatim from the library
-  #   templated — .nix files that produce .fish files with store path interpolation
-  #
-  # The library ships its own static functions (the polar function library).
-  # Projects can extend via their own Custom package layer — they add fish
-  # functions as normal packages, not via this mechanism.
-  #
-  # Naming: symlinks in vendor_functions.d strip the nix hash prefix from
-  # the filename so the function name is clean: "lol.fish" not "abc123-lol.fish"
-  # ---------------------------------------------------------------------------
-  staticFuncDir = ./vendor_functions;
-
-  # Wrap each static function file as a pkgs.writeText derivation so it
-  # becomes a proper Nix store path that is tracked as a closure dependency.
-  # Raw path literals (./vendor_functions/lh.fish) resolve to the library
-  # source tree store path, which is NOT included in the container image
-  # closure — causing dangling symlinks inside the container.
-  # Wrapping as derivations ensures each file lands in its own store path
-  # that IS registered in closureInfo and present in the image layers.
-  staticFuncPaths =
-    let
-      entries   = builtins.readDir staticFuncDir;
-      names     = builtins.attrNames entries;
-      fishFiles = builtins.filter (n: lib.hasSuffix ".fish" n) names;
-    in
-      map (n: pkgs.writeText n (builtins.readFile (staticFuncDir + "/${n}")))
-        fishFiles;
-
-  # Templated functions: lol.nix and man.nix from the original polar
-  lolFunc = pkgs.writeText "lol.fish" ''
-    function lol --description="lolcat (dotacat) inside cowsay"
-        printf "%s\n" $argv | \
-            cowsay -n -f (set cows (ls ${pkgs.cowsay}/share/cowsay/cows); \
-            set total_cows (count $cows); \
-            set random_cow (random 1 $total_cows); \
-            set my_cow $cows[$random_cow]; \
-            echo -n $my_cow | \
-            cut -d '.' -f 1) -W 79 | \
-            dotacat
-    end
-  '';
-
-  manFunc = pkgs.writeText "man.fish" ''
-    function man --description="Get the page, man"
-        ${pkgs.man}/bin/man $argv | bat --language man --style plain
-    end
-  '';
-
-  templatedFuncs = [ lolFunc manFunc ];
+  vendorFuncFiles = [
+    (import ./vendor_functions/export.nix             { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/var_erase.nix          { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/hash_get.nix           { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/is_a_directory.nix     { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/is_valid_argument.nix  { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/path_exists.nix        { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/is_valid_dir.nix       { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/files_compare.nix      { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/files_compare_verbose.nix { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/myps.nix               { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/ocd.nix                { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/nvrun.nix              { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/fish_greeting.nix      { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/lh.nix                 { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/lht.nix                { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/rgk.nix                { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/setup_git.nix          { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/prettyjson.nix         { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/yaml_to_json.nix       { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/filename_get_random.nix { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/json_validate.nix      { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/display_fzf_files.nix  { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/display_rg_piped_fzf.nix { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/fd_fzf.nix             { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/fdfz.nix               { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/nvim_goto_files.nix    { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/nvimf.nix              { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/nvim_goto_line.nix     { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/nviml.nix              { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/ssh-start.nix          { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/ssh-stop.nix           { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/pi-local.nix           { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/start-llama.nix        { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/lol_fig.nix            { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/lol.nix                { inherit pkgs cfg devEnv; })
+    (import ./vendor_functions/man.nix                { inherit pkgs cfg devEnv; })
+  ];
 
   vendorFuncs = pkgs.runCommand "fish-vendor-funcs" {}
     (let
-       allPaths = staticFuncPaths ++ templatedFuncs;
+       allPaths = lib.filter (x: x != null) vendorFuncFiles;
        list     = lib.concatStringsSep " " (map toString allPaths);
      in ''
        mkdir -p $out/etc/fish/vendor_functions.d

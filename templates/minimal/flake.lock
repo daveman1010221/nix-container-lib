@@ -18,6 +18,30 @@
         "type": "github"
       }
     },
+    "nix-container-lib": {
+      "inputs": {
+        "flake-utils": [
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1776621500,
+        "narHash": "sha256-xceWfEvfmEB7BN18ksAfVpr7YtrfTlWlBYh9jMIBwik=",
+        "owner": "daveman1010221",
+        "repo": "nix-container-lib",
+        "rev": "7b22e78327efefbfd314d2d340b4ed4b9de2b2de",
+        "type": "github"
+      },
+      "original": {
+        "owner": "daveman1010221",
+        "ref": "7b22e78",
+        "repo": "nix-container-lib",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1776169885,
@@ -37,6 +61,7 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
+        "nix-container-lib": "nix-container-lib",
         "nixpkgs": "nixpkgs",
         "uutils-micro": "uutils-micro"
       }

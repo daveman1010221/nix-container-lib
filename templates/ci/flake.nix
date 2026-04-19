@@ -5,7 +5,7 @@
     nixpkgs.url             = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url         = "github:numtide/flake-utils";
 
-    nix-container-lib.url = "github:daveman1010221/nix-container-lib";
+    nix-container-lib.url = "github:daveman1010221/nix-container-lib/7b22e78";
     nix-container-lib.inputs.nixpkgs.follows      = "nixpkgs";
     nix-container-lib.inputs.flake-utils.follows  = "flake-utils";
   };

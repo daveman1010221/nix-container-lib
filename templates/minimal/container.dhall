@@ -23,7 +23,8 @@
 --   - Keep packageLayers short — every package is attack surface
 --   - Inject runtime secrets via env vars, never bake them in
 
-let Lib = ./../../dhall/prelude.dhall
+let Lib = https://raw.githubusercontent.com/daveman1010221/nix-container-lib/7b22e78/dhall/prelude.dhall
+        sha256:751c03ffea9c70b8c3fd4c9f45975a968abcf1943c9f5e3d3e9bebb426fb6abd
 let defaults = Lib.defaults
 
 in defaults.minimalContainer //
@@ -32,7 +33,11 @@ in defaults.minimalContainer //
   -- ── Entrypoint (option A: binary) ──────────────────────────────────────────
   -- Set entrypoint and leave shell = None.
   -- OCI Cmd becomes ["/bin/my-entrypoint-binary"].
-  , entrypoint = Some "my-entrypoint-binary"
+  , entrypoint = None Text
+
+  -- The implied default is:
+  -- , shell = None Lib.Shell
+  , shell      = Some Lib.defaults.minimalNuShell
 
   -- ── Shell (option B: minimal shell as entrypoint) ──────────────────────────
   -- Comment out entrypoint above and uncomment one of these.
@@ -58,15 +63,14 @@ in defaults.minimalContainer //
   -- Micro = cacert + minimal uutils + getent + openssl. Nothing else.
   -- Add only what your binary actually needs at runtime.
   , packageLayers =
-      [ Lib.PackageLayer.Micro
-      , Lib.customLayer "my-entrypoint"
-          [ Lib.flakePackage "myInput" "packages.default"
-          -- Common additions:
-          -- , Lib.nixpkgs "git"      -- if you need to clone repos
-          -- , Lib.nixpkgs "curl"     -- if you need HTTP
-          -- , Lib.nixpkgs "jq"       -- if you need JSON processing
-          ]
-      ]
+    [ Lib.PackageLayer.Micro
+    -- Add only what your binary actually needs at runtime:
+    -- , Lib.customLayer "my-entrypoint"
+    --     [ Lib.flakePackage "myInput" "packages.default"
+    --     -- , Lib.nixpkgs "git"
+    --     -- , Lib.nixpkgs "curl"
+    --     ]
+    ]
 
   -- Build-time env vars (no store paths — safe for OCI config.Env)
   , extraEnv =

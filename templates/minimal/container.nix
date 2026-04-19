@@ -1,6 +1,6 @@
 {
   ai = null;
-  entrypoint = "my-entrypoint-binary";
+  entrypoint = null;
   extraEnv = [
     { name = "GIT_TERMINAL_PROMPT"; placement = u: u.BuildTime; value = "0"; }
   ];
@@ -15,19 +15,10 @@
       u.Auto;
     trustedUsers = [ "root" ];
   };
-  packageLayers = [
-    (u:
-      u.Micro)
-    (u:
-      u.Custom {
-        name = "my-entrypoint";
-        packages = [
-          { attrPath = "packages.default"; flakeInput = "myInput"; }
-        ];
-      })
-  ];
+  packageLayers = [ (u: u.Micro) ];
   pipeline = null;
-  shell = null;
+  shell = u:
+    u.Minimal { shell = "/bin/nu"; };
   ssh = null;
   staticGid = 65532;
   staticUid = 65532;

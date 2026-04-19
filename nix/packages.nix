@@ -63,10 +63,9 @@ let
   # The feature names correspond to uutils tool names (lowercase, no prefix).
   # ---------------------------------------------------------------------------
 
-  # Shell-specific uutils — use full package for now.
-  # TODO: build with specific cargo features per shell type for true minimalism.
-  dashUutils  = pkgs.uutils-coreutils-noprefix;
-  nuMinUutils = pkgs.uutils-coreutils-noprefix;
+  # Shell-specific uutils
+  dashUutils  = inputs.uutils-micro.packages.${pkgs.system}.default or pkgs.uutils-coreutils-noprefix;
+  nuMinUutils = inputs.uutils-micro.packages.${pkgs.system}.default or pkgs.uutils-coreutils-noprefix;
 
 in
 {
@@ -78,7 +77,7 @@ in
   # ---------------------------------------------------------------------------
   micro = with pkgs; [
     cacert
-    uutils-coreutils-noprefix
+    (inputs.uutils-micro.packages.${pkgs.system}.default or pkgs.uutils-coreutils-noprefix)
     getent
     openssl
   ];
@@ -170,7 +169,7 @@ in
     nushellPlugins.highlight
     nushellPlugins.polars
     nushellPlugins.semver
-  ];
+  ] ++ [ (if pkgs ? nvim-pkg then pkgs.nvim-pkg else pkgs.neovim) ];
 
   # ---------------------------------------------------------------------------
   # Toolchain

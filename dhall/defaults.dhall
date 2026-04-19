@@ -118,44 +118,59 @@ let devContainer
 
 let ciContainer
     : T.ContainerConfig
-    =     devContainer
-      //  { name = "unnamed-ci"
-          , mode = T.Mode.CI
-          , packageLayers =
-            [ T.PackageLayer.Core, T.PackageLayer.CI, T.PackageLayer.Pipeline ]
-          , shell = None T.Shell
-          , ssh = None T.SSHConfig
-          , user = defaultUser // { createUser = False }
-          , entrypoint = None Text
-          , staticUid = None Natural
-          , staticGid = None Natural
-          }
+    = { name = "unnamed-ci"
+      , mode = T.Mode.CI
+      , packageLayers =
+        [ T.PackageLayer.Core, T.PackageLayer.CI, T.PackageLayer.Pipeline ]
+      , shell = None T.Shell
+      , pipeline = None T.PipelineConfig
+      , ssh = None T.SSHConfig
+      , tls = None T.TLSConfig
+      , nix = defaultNix // { enableDaemon = False }
+      , user = defaultUser // { createUser = False }
+      , extraEnv = [] : List T.EnvVar
+      , ai = None T.AiConfig
+      , entrypoint = None Text
+      , staticUid = None Natural
+      , staticGid = None Natural
+      }
 
 let agentContainer
     : T.ContainerConfig
-    =     devContainer
-      //  { name = "unnamed-agent"
-          , mode = T.Mode.Agent
-          , packageLayers = [ T.PackageLayer.Core, T.PackageLayer.Agent ]
-          , shell = None T.Shell
-          , ssh = None T.SSHConfig
-          , tls = Some defaultTLS
-          , user = defaultUser // { createUser = False }
-          , nix = defaultNix // { enableDaemon = False }
-          , entrypoint = None Text
-          , staticUid = None Natural
-          , staticGid = None Natural
-          }
+    = { name = "unnamed-agent"
+      , mode = T.Mode.Agent
+      , packageLayers = [ T.PackageLayer.Core, T.PackageLayer.Agent ]
+      , shell = None T.Shell
+      , pipeline = None T.PipelineConfig
+      , ssh = None T.SSHConfig
+      , tls = Some defaultTLS
+      , nix = defaultNix // { enableDaemon = False }
+      , user = defaultUser // { createUser = False }
+      , extraEnv = [] : List T.EnvVar
+      , ai = None T.AiConfig
+      , entrypoint = None Text
+      , staticUid = None Natural
+      , staticGid = None Natural
+      }
 
 let pipelineContainer
     : T.ContainerConfig
-    =     ciContainer
-      //  { name = "unnamed-pipeline"
-          , mode = T.Mode.Pipeline
-          , entrypoint = None Text
-          , staticUid = Some 65532
-          , staticGid = Some 65532
-          }
+    = { name = "unnamed-pipeline"
+      , mode = T.Mode.Pipeline
+      , packageLayers =
+        [ T.PackageLayer.Core, T.PackageLayer.CI, T.PackageLayer.Pipeline ]
+      , shell = None T.Shell
+      , pipeline = None T.PipelineConfig
+      , ssh = None T.SSHConfig
+      , tls = None T.TLSConfig
+      , nix = defaultNix // { enableDaemon = False }
+      , user = defaultUser // { createUser = False }
+      , extraEnv = [] : List T.EnvVar
+      , ai = None T.AiConfig
+      , entrypoint = None Text
+      , staticUid = Some 65532
+      , staticGid = Some 65532
+      }
 
 -- ---------------------------------------------------------------------------
 -- minimalContainer
