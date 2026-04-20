@@ -5,7 +5,7 @@
 -- Full type reference: nix-container-lib/dhall/types.dhall
 -- Available defaults:  nix-container-lib/dhall/defaults.dhall
 
-let Lib = https://raw.githubusercontent.com/daveman1010221/nix-container-lib/b8b418e/dhall/prelude.dhall
+let Lib = https://raw.githubusercontent.com/daveman1010221/nix-container-lib/9da4924831c8e0d81d57448425d6cd10820b71d2/dhall/prelude.dhall
         sha256:18acbbb5708565905ab9522fa77a81eb402851f06870a34a22f6c979001c4571
 let defaults = Lib.defaults
 
