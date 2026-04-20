@@ -35,6 +35,13 @@
 #     container = lib.lib.${system}.mkContainer {
 #       inherit system pkgs inputs;
 #       configNixPath = ./container.nix;   # pre-rendered from container.dhall
+#
+#       # Optional: locally-built derivations that cannot be expressed as
+#       # dhall PackageRef entries (e.g. binaries built by craneLib or
+#       # writeShellApplication in the same flake). These are appended to
+#       # the package set resolved from container.nix and included in the
+#       # image alongside packages declared in packageLayers.
+#       extraDerivations = [ myLocalBinary ];
 #     };
 #   in {
 #     packages.devContainer = container.image;
@@ -90,10 +97,6 @@ let
     paths       =
       cfg.packages
       ++ extraDerivations
-      # Include shSymlink in devEnv so buildEnv correctly merges /bin/sh
-      # alongside other /bin entries. Adding it only to allContents/contents
-      # causes buildLayeredImage to see it as a separate layer whose /bin
-      # directory doesn't merge with devEnv's /bin symlink farm.
       ++ lib.optional (identity.shSymlink != null) identity.shSymlink
       ++ lib.optionals (!isMinimal) (
            [ startScript containerHelpScript ]
@@ -103,8 +106,6 @@ let
 
   # ---------------------------------------------------------------------------
   # Shell files (mode-aware)
-  # Minimal shells get minimal configs. Interactive shells get full configs.
-  # No shell = no shell files.
   # ---------------------------------------------------------------------------
   shellFiles =
     if cfg.shell == null then []
@@ -127,11 +128,8 @@ let
     else null;
 
   # ---------------------------------------------------------------------------
-  # SBOM — generated from closure, embedded in image
+  # SBOM
   # ---------------------------------------------------------------------------
-  # We generate the SBOM after assembling allContents so the closure is complete.
-  # The SBOM derivation references closureInfo which is computed below.
-  # To break the circularity, we compute a preliminary closure for SBOM purposes.
   preliminaryContents =
     [ devEnv ]
     ++ shellFiles
@@ -193,10 +191,8 @@ let
   # ---------------------------------------------------------------------------
   # OCI Cmd
   #
-  # Minimal mode priority:
-  #   1. Explicit entrypoint → /bin/<entrypoint>
-  #   2. Shell → shell binary path
-  # Non-minimal: always start.sh
+  # Minimal mode: exec entrypoint or shell directly — no start.nu
+  # Non-minimal:  exec nu → start.nu — no bash dependency
   # ---------------------------------------------------------------------------
   containerCmd =
     if isMinimal then
@@ -207,7 +203,7 @@ let
       else
         throw "container.nix: minimal mode requires entrypoint or shell"
     else
-      [ "/bin/start.sh" ];
+      [ "/bin/nu" "/bin/start.nu" ];
 
   # ---------------------------------------------------------------------------
   # Build-time env
@@ -231,7 +227,7 @@ let
       "MANPATH=/share/man"
       "RUSTFLAGS=-Clinker=clang-lld-wrapper"
       "PKG_CONFIG_PATH=/lib/pkgconfig"
-      "SHELL=${if cfg.shell != null then cfg.shell.shell else "/bin/fish"}"
+      "SHELL=${if cfg.shell != null then cfg.shell.shell else "/bin/nu"}"
       "SSL_CERT_DIR=/etc/ssl/certs"
       "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
       "CARGO_HTTP_CAINFO=/etc/ssl/certs/ca-bundle.crt"

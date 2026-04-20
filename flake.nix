@@ -7,9 +7,12 @@
     uutils-micro.url = "github:daveman1010221/uutils-micro/7cda0210b076f384906d189171c065a1884cad96";
     uutils-micro.inputs.nixpkgs.follows = "nixpkgs";
     uutils-micro.inputs.flake-utils.follows = "flake-utils";
+    vigil-rs.url = "github:daveman1010221/vigil-rs-nix";
+    vigil-rs.inputs.nixpkgs.follows = "nixpkgs";
+    vigil-rs.inputs.flake-utils.follows = "flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils, uutils-micro }:
+  outputs = { self, nixpkgs, flake-utils, uutils-micro, vigil-rs }:
     let
       # -------------------------------------------------------------------------
       # System-independent outputs
@@ -46,35 +49,8 @@
       let
         pkgs = import nixpkgs { inherit system; };
       in {
-        # -----------------------------------------------------------------------
-        # Library functions — primary API surface for consuming flakes.
-        #
-        # AUTHORING WORKFLOW (dhall → nix → build):
-        #
-        #   1. Write your container config in Dhall:
-        #        container.dhall
-        #
-        #   2. Pre-render to Nix OUTSIDE the sandbox:
-        #        just render-container
-        #        # or: dhall-to-nix --file container.dhall > container.nix
-        #
-        #   3. Commit both files.
-        #
-        #   4. Reference the rendered file in your flake:
-        #        mkContainer { ...; configNixPath = ./container.nix; }
-        #
-        # WHY NOT dhallToNix AT BUILD TIME?
-        #   Dhall's import system resolves dependencies at evaluation time.
-        #   The Nix sandbox has no network access, so any Dhall file that
-        #   imports from a URL (including the nix-container-lib prelude) fails.
-        #   Pre-rendering moves the Dhall evaluation to authoring time where
-        #   full filesystem and network access is available.
-        # -----------------------------------------------------------------------
         lib = {
-          # Primary entry point. Takes a pre-rendered Nix path.
           mkContainer = import ./nix/container.nix;
-
-          # Escape hatches for advanced composition
           fromDhall  = import ./nix/from-dhall.nix;
           packages   = import ./nix/packages.nix;
           entrypoint = import ./nix/entrypoint.nix;
@@ -85,38 +61,21 @@
           gcRoots    = import ./nix/gc-roots.nix;
         };
 
-        # -----------------------------------------------------------------------
-        # Smoke test
-        # Uses a pre-rendered smoke-test.nix (produced from smoke-test.dhall).
-        # Build with: nix build .#smokeTest
-        # Re-render with: just render-smoke-test
-        # -----------------------------------------------------------------------
         legacyPackages.smokeTest = (import ./nix/container.nix {
           inherit system pkgs;
-          inputs      = {};
+          inputs      = { inherit uutils-micro vigil-rs; };
           configNixPath = ./smoke-test.nix;
         }).image;
 
-        # -----------------------------------------------------------------------
-        # Library development shell
-        # Provides Dhall tooling for type-checking and rendering configs.
-        # Enter with: nix develop
-        # -----------------------------------------------------------------------
         devShells.default = pkgs.mkShell {
           name = "nix-container-lib-dev";
 
           packages = with pkgs; [
-            # Dhall tooling
-            # dhall        # type-checker and REPL
-            dhall-json   # dhall-to-json, dhall-to-yaml
-            dhall-nix    # dhall-to-nix  ← renders .dhall → .nix for sandbox-safe builds
-
-            # Nix tooling
+            dhall-json
+            dhall-nix
             nix
             nix-prefetch-git
-            just         # for the render-* recipes
-
-            # General dev tools
+            just
             jq
             git
           ];
