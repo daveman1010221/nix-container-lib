@@ -14,8 +14,10 @@
 #   7.  Nix daemon           (cfg.nix.enableDaemon)
 #   8.  SFTP symlink         (cfg.ssh != null)
 #   9.  Cargo cache          (cfg.hasToolchain)
-#  10.  Write vigil layer
-#  11.  Exec vigild as PID 1
+#  10.  Banner
+#  11.  Write vigil layer + launch
+#       - ci/pipeline: vigild as PID 1, pipeline-runner supervised
+#       - dev/agent:   vigild backgrounded, shell exec'd as foreground
 
 { pkgs
 , cfg
@@ -48,6 +50,10 @@ let
         if (which $bin | is-empty) {
             die $"missing binary: ($bin)"
         }
+    }
+
+    def warn [msg: string] {
+        print --stderr $"warning: ($msg)"
     }
 
     def file-append [path: string, content: string] {
@@ -146,7 +152,9 @@ let
           ^chown $"($uid):($gid)" $"/home/($username)/.ssh"
 
           need rsync
-          ^rsync -a $"--chown=($uid):($gid)" /root/ $"/home/($username)/" | ignore
+          if ("/root" | path exists) {
+              ^rsync -a $"--chown=($uid):($gid)" /root/ $"/home/($username)/" | ignore
+          }
 
           ^chmod 1777 /tmp
 
@@ -185,17 +193,19 @@ let
           ''}
       }
 
-      if (($env.CREATE_USER? | default "" | is-empty) or
-          ($env.CREATE_UID?  | default "" | is-empty) or
-          ($env.CREATE_GID?  | default "" | is-empty)) {
-          # No user creation requested — run as root
-      } else {
+      # Attempt user creation — degrade gracefully if env vars missing
+      let user_vars_set = ((not ($env.CREATE_USER? | default "" | is-empty)) and
+                           (not ($env.CREATE_UID?  | default "" | is-empty)) and
+                           (not ($env.CREATE_GID?  | default "" | is-empty)))
+
+      if $user_vars_set {
           create-user $env.CREATE_USER ($env.CREATE_UID | into int) ($env.CREATE_GID | into int)
+      } else {
+          warn "CREATE_USER/CREATE_UID/CREATE_GID not set — running as root"
+          warn "To create a user, pass: -e CREATE_USER=name -e CREATE_UID=1000 -e CREATE_GID=1000"
       }
 
-      let dev_user = if (not ($env.CREATE_USER? | default "" | is-empty)) and
-                        (not ($env.CREATE_UID?  | default "" | is-empty)) and
-                        (not ($env.CREATE_GID?  | default "" | is-empty)) {
+      let dev_user = if $user_vars_set {
           { user: $env.CREATE_USER, uid: ($env.CREATE_UID | into int), gid: ($env.CREATE_GID | into int) }
       } else {
           { user: "root", uid: 0, gid: 0 }
@@ -237,7 +247,7 @@ let
           }
       }
       if ("/run/opengl-driver/lib" | path exists) {
-          $env.LD_LIBRARY_PATH = $"/run/opengl-driver/lib:(if ($env.LD_LIBRARY_PATH? | default '''''' | is-empty) { ''''''' } else { $'''''':($env.LD_LIBRARY_PATH)'''''' })"
+          $env.LD_LIBRARY_PATH = $"/run/opengl-driver/lib:(if ($env.LD_LIBRARY_PATH? | default '''''' | is-empty) { '''''' } else { $'''''':($env.LD_LIBRARY_PATH)'''''' })"
       }
     ''
     else "";
@@ -405,12 +415,52 @@ let
     else "";
 
   # ---------------------------------------------------------------------------
-  # Phase 10: Vigil layer YAML
+  # Phase 10: Banner
+  # ---------------------------------------------------------------------------
+  phaseBanner = ''
+    ##############################################################################
+    # Banner
+    ##############################################################################
+    if ("/etc/container-info" | path exists) {
+        ^cat /etc/container-info
+    }
+    print $" • User ............. ($dev_user.user)  \(uid=($dev_user.uid) / gid=($dev_user.gid)\)"
+    print $" • Mode ............. ${cfg.mode}"
+    if ("/workspace" | path exists) {
+        let mp = (^mountpoint -q /workspace | complete)
+        if $mp.exit_code == 0 {
+            print " • Volume mount ..... /workspace is mounted"
+        }
+    }
+    print " 🆘  Type 'container-help' for usage instructions"
+    print "────────────────────────────────────────────────────────────────────────────"
+  '';
+
+  # ---------------------------------------------------------------------------
+  # Phase 11: Vigil layer + launch
+  #
+  # CI/pipeline: vigild as PID 1, pipeline-runner supervised with passthrough logs
+  # Dev/agent:   vigild backgrounded managing background services,
+  #              shell exec'd as foreground with graceful degradation
   # ---------------------------------------------------------------------------
 
-  # SSH service block — only for dev containers with SSH configured
+  # Nix daemon service — only when enabled, only for dev/agent
+  nixDaemonServiceBlock =
+    if cfg.nix.enableDaemon
+    then ''
+
+        nix-daemon:
+          summary: Nix build daemon
+          command: /bin/nix-daemon --daemon
+          startup: enabled
+          on-success: restart
+          on-failure: restart
+      ''
+    else "";
+
+  # Dropbear SSH service — only for dev/agent with SSH configured
   sshServiceBlock =
-    if cfg.ssh != null && cfg.mode == "dev"
+    if cfg.ssh != null && (cfg.mode == "dev" || cfg.mode == "agent")
     then
       let port = toString cfg.ssh.port;
       in ''
@@ -428,47 +478,8 @@ let
       ''
     else "";
 
-  # Nix daemon service block — only when enabled
-  nixDaemonServiceBlock =
-    if cfg.nix.enableDaemon
-    then ''
-
-        nix-daemon:
-          summary: Nix build daemon
-          command: /bin/nix-daemon --daemon
-          startup: enabled
-          on-success: restart
-          on-failure: restart
-      ''
-    else "";
-
-  # Build the vigil layer YAML based on mode
   vigilLayer =
-    if cfg.mode == "dev" then ''
-      summary: dev container services
-
-      services:
-
-        shell:
-          summary: Interactive shell (${shellBin})
-          command: ${shellBin} -l
-          startup: enabled
-          user-id: DEV_UID_PLACEHOLDER
-          group-id: DEV_GID_PLACEHOLDER
-          environment:
-            HOME: /home/DEV_USER_PLACEHOLDER
-            USER: DEV_USER_PLACEHOLDER
-            LOGNAME: DEV_USER_PLACEHOLDER
-            SHELL: ${shellBin}
-            XDG_CACHE_HOME: /home/DEV_USER_PLACEHOLDER/.cache
-            XDG_CONFIG_HOME: /home/DEV_USER_PLACEHOLDER/.config
-            XDG_DATA_HOME: /home/DEV_USER_PLACEHOLDER/.local/share
-          on-success: success-shutdown
-          on-failure: failure-shutdown
-      ${nixDaemonServiceBlock}
-      ${sshServiceBlock}
-    ''
-    else if cfg.mode == "ci" || cfg.mode == "pipeline" then ''
+    if cfg.mode == "ci" || cfg.mode == "pipeline" then ''
       summary: CI pipeline runner
 
       services:
@@ -477,13 +488,19 @@ let
           summary: Pipeline runner
           command: ${nuBin} /etc/pipeline/pipeline_runner.nu
           startup: enabled
+          logs-forward: passthrough
           environment:
             PIPELINE_TARGET: PIPELINE_TARGET_PLACEHOLDER
           on-success: success-shutdown
           on-failure: failure-shutdown
     ''
+    else if cfg.mode == "dev" then ''
+      summary: dev container background services
+      ${nixDaemonServiceBlock}
+      ${sshServiceBlock}
+    ''
     else if cfg.mode == "agent" then ''
-      summary: Agent supervisor
+      summary: agent container services
 
       services:
 
@@ -491,29 +508,70 @@ let
           summary: Agent supervisor
           command: /bin/agent-supervisor
           startup: enabled
-          on-success: success-shutdown
-          on-failure: failure-shutdown
+          logs-forward: passthrough
+          on-success: restart
+          on-failure: restart
+      ${sshServiceBlock}
     ''
     else throw "entrypoint: unknown mode '${cfg.mode}'";
 
-  # Phase 10: write layer + exec vigild
-  phaseVigilExec = ''
-    ##############################################################################
-    # Write vigil layer and exec vigild as PID 1
-    ##############################################################################
-    ^mkdir -p /run/vigil/layers
+  phaseVigilExec =
+    if cfg.mode == "ci" || cfg.mode == "pipeline" then ''
+      ##############################################################################
+      # CI/Pipeline: vigild as PID 1
+      ##############################################################################
+      ^mkdir -p /run/vigil/layers
 
-    # Substitute runtime values into the layer YAML
-    let layer_yaml = "${vigilLayer}"
-        | str replace --all "DEV_USER_PLACEHOLDER" $dev_user.user
-        | str replace --all "DEV_UID_PLACEHOLDER"  ($dev_user.uid | into string)
-        | str replace --all "DEV_GID_PLACEHOLDER"  ($dev_user.gid | into string)
-        | str replace --all "PIPELINE_TARGET_PLACEHOLDER" ($env.PIPELINE_STAGE? | default "all")
+      let layer_yaml = "${vigilLayer}"
+          | str replace --all "PIPELINE_TARGET_PLACEHOLDER" ($env.PIPELINE_STAGE? | default "all")
 
-    $layer_yaml | save --force /run/vigil/layers/001-container.yaml
+      $layer_yaml | save --force /run/vigil/layers/001-container.yaml
 
-    exec /bin/vigild --layers-dir /run/vigil/layers --socket /run/vigil/vigild.sock
-  '';
+      exec /bin/vigild --layers-dir /run/vigil/layers --socket /run/vigil/vigild.sock
+    ''
+    else ''
+      ##############################################################################
+      # Dev/Agent: vigild backgrounded, shell exec'd as foreground
+      ##############################################################################
+      ^mkdir -p /run/vigil/layers
+
+      let layer_yaml = "${vigilLayer}"
+          | str replace --all "DEV_USER_PLACEHOLDER" $dev_user.user
+
+      $layer_yaml | save --force /run/vigil/layers/001-container.yaml
+
+      # Start vigild in the background to supervise daemons/services.
+      # job spawn detaches it from the foreground — vigild runs independently.
+      job spawn { ^/bin/vigild --layers-dir /run/vigil/layers --socket /run/vigil/vigild.sock }
+
+      # Wait up to 2s for vigild to initialize (socket appearance = ready)
+      let vigild_ready = (
+          1..20 | each { |_|
+              ^sleep 0.1
+              "/run/vigil/vigild.sock" | path exists
+          } | any { |x| $x }
+      )
+      if not $vigild_ready {
+          warn "vigild did not start within 2s — background services will not be supervised"
+          warn "Container will still function — dropping to shell"
+      }
+
+      # Exec the shell as the foreground process with uid/gid drop.
+      # If we have a named user, use su to get a proper login shell.
+      # Fall back to root shell on any failure — always give the user a shell.
+      if $dev_user.user != "root" {
+          $env.HOME    = $"/home/($dev_user.user)"
+          $env.USER    = $dev_user.user
+          $env.LOGNAME = $dev_user.user
+          $env.SHELL   = "${shellBin}"
+          $env.XDG_CACHE_HOME  = $"/home/($dev_user.user)/.cache"
+          $env.XDG_CONFIG_HOME = $"/home/($dev_user.user)/.config"
+          $env.XDG_DATA_HOME   = $"/home/($dev_user.user)/.local/share"
+          exec chroot --userspec $"($dev_user.uid):($dev_user.gid)" / ${shellBin} -l
+      } else {
+          exec ${shellBin}
+      }
+    '';
 
 in
   pkgs.writeTextFile {
@@ -529,5 +587,6 @@ in
       + phaseNixDaemon
       + phaseSftpSymlink
       + phaseCargoCache
+      + phaseBanner
       + phaseVigilExec;
   }

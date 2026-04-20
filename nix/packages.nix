@@ -53,6 +53,7 @@ in
       gnutar
       gzip
       nix
+      nushell
       openssl
       uutils-coreutils-noprefix
     ]

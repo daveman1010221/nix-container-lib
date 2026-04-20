@@ -20,11 +20,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1776169885,
-        "narHash": "sha256-l/iNYDZ4bGOAFQY2q8y5OAfBBtrDAaPuRQqWaFHVRXM=",
+        "lastModified": 1776548001,
+        "narHash": "sha256-ZSK0NL4a1BwVbbTBoSnWgbJy9HeZFXLYQizjb2DPF24=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "4bd9165a9165d7b5e33ae57f3eecbcb28fb231c9",
+        "rev": "b12141ef619e0a9c1c84dc8c684040326f27cdcc",
         "type": "github"
       },
       "original": {
@@ -67,17 +67,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1776634362,
-        "narHash": "sha256-fDe5/txArLyYODS6bln9Z4VAmce6UnYqXK6CyaKeB30=",
+        "lastModified": 1776718975,
+        "narHash": "sha256-wP4eZmE2WD2NKzYijwdiz+8ACfEvdSWjdFqapXoV7sc=",
         "owner": "daveman1010221",
         "repo": "uutils-micro",
-        "rev": "7cda0210b076f384906d189171c065a1884cad96",
+        "rev": "8fc9e721601c3f822a1ade8781a6ee3e12d50a2c",
         "type": "github"
       },
       "original": {
         "owner": "daveman1010221",
         "repo": "uutils-micro",
-        "rev": "7cda0210b076f384906d189171c065a1884cad96",
         "type": "github"
       }
     },

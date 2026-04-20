@@ -8,25 +8,22 @@
     nix-container-lib.url = "github:daveman1010221/nix-container-lib/b8b418e";
     nix-container-lib.inputs.nixpkgs.follows      = "nixpkgs";
     nix-container-lib.inputs.flake-utils.follows  = "flake-utils";
+
+    vigil-rs.url = "github:daveman1010221/vigil-rs-nix/0d19379";
+    vigil-rs.inputs.nixpkgs.follows    = "nixpkgs";
+    vigil-rs.inputs.flake-utils.follows = "flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils, nix-container-lib, ... } @ inputs:
+  outputs = { self, nixpkgs, flake-utils, nix-container-lib, vigil-rs, ... } @ inputs:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
-
-        # -----------------------------------------------------------------------
-        # container.nix is the pre-rendered output of container.dhall.
-        # To regenerate it after editing container.dhall:
-        #   just render-container
-        # -----------------------------------------------------------------------
         container = nix-container-lib.lib.${system}.mkContainer {
           inherit system pkgs inputs;
           configNixPath = ./container.nix;
         };
       in
       {
-        # Build with: nix build .#ciContainer
         packages.ciContainer = container.image;
         packages.default     = container.image;
       }
