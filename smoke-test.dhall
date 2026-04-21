@@ -7,18 +7,18 @@
 -- representative CI container config type-checks correctly.
 -- CI mode requires pipeline to be set — this uses a minimal stub pipeline.
 
-{ name          = "polar-container-lib-smoke-test"
-, mode          = < Dev | CI | Agent | Pipeline | Minimal >.CI
+{ name = "polar-container-lib-smoke-test"
+, mode = < Dev | CI | InfraAgent | AIAgent | Minimal >.CI
 , packageLayers =
-    [ < Core | Micro | CI | Dev | Toolchain | Pipeline | Agent
+    [ < Micro | Core | CI | InteractiveDev | RustToolchain | PythonToolchain | NodeToolchain | Infrastructure
+      | Custom : { name : Text, packages : List { attrPath : Text, flakeInput : Optional Text } }
+      >.Micro
+    , < Micro | Core | CI | InteractiveDev | RustToolchain | PythonToolchain | NodeToolchain | Infrastructure
       | Custom : { name : Text, packages : List { attrPath : Text, flakeInput : Optional Text } }
       >.Core
-    , < Core | Micro | CI | Dev | Toolchain | Pipeline | Agent
+    , < Micro | Core | CI | InteractiveDev | RustToolchain | PythonToolchain | NodeToolchain | Infrastructure
       | Custom : { name : Text, packages : List { attrPath : Text, flakeInput : Optional Text } }
       >.CI
-    , < Core | Micro | CI | Dev | Toolchain | Pipeline | Agent
-      | Custom : { name : Text, packages : List { attrPath : Text, flakeInput : Optional Text } }
-      >.Pipeline
     ]
 , shell =
     None

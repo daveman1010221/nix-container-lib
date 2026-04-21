@@ -74,7 +74,7 @@ let
   # ---------------------------------------------------------------------------
   # Nix-in-Nix infrastructure (mode-aware)
   # ---------------------------------------------------------------------------
-  nixInfra = import ./nix-infra.nix { inherit pkgs system cfg; };
+  nixInfra = import ./nix-infra.nix { inherit pkgs system cfg inputs; };
 
   # ---------------------------------------------------------------------------
   # Package sets (for banner tool list)
@@ -86,7 +86,7 @@ let
   # ---------------------------------------------------------------------------
   startScript =
     if isMinimal then null
-    else import ./entrypoint.nix { inherit pkgs cfg devEnv; };
+    else import ./entrypoint.nix { inherit pkgs cfg devEnv inputs; };
 
   containerHelpScript =
     if isMinimal then null

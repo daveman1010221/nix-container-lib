@@ -45,19 +45,14 @@ in
   # vigild is included here so all non-minimal containers have the supervisor.
   # ---------------------------------------------------------------------------
   core = with pkgs;
-    [ cacert
-      coreutils
-      findutils
-      getent
-      glibcLocalesUtf8
-      gnutar
-      gzip
-      nix
-      nushell
-      openssl
-      uutils-coreutils-noprefix
-    ]
-    ++ lib.optional (vigild != null) vigild;
+  [ fd
+    glibcLocalesUtf8
+    gnutar
+    gzip
+    nix
+    nushell
+  ]
+  ++ lib.optional (vigild != null) vigild;
 
   # ---------------------------------------------------------------------------
   # CI
@@ -69,74 +64,60 @@ in
     dhall-yaml
     envsubst
     git
-    gnugrep
-    gnused
     grype
-    jq
     oras
     skopeo
     sops
     syft
     vulnix
-    yq
   ];
 
   # ---------------------------------------------------------------------------
   # Dev
   # vigil CLI included for interactive control of supervised services.
   # ---------------------------------------------------------------------------
-  dev = with pkgs;
-    [ atuin
-      bat
-      cowsay
-      delta
-      direnv
-      eza
-      fd
-      figlet
-      fish
-      fishPlugins.bass
-      fishPlugins.bobthefish
-      fishPlugins.foreign-env
-      fishPlugins.grc
-      fzf
-      gawk
-      git
-      grc
-      iproute2
-      jq
-      just
-      lsof
-      man
-      man-db
-      man-pages
-      man-pages-posix
-      ncurses
-      procps
-      ripgrep
-      rsync
-      sqlite
-      starship
-      strace
-      tree
-      tree-sitter
-      which
-      openssh
-      nushell
-      nushellPlugins.query
-      nushellPlugins.formats
-      nushellPlugins.gstat
-      nushellPlugins.highlight
-      nushellPlugins.polars
-      nushellPlugins.semver
-    ]
-    ++ [ (if pkgs ? nvim-pkg then pkgs.nvim-pkg else pkgs.neovim) ]
-    ++ lib.optional (vigilCli != null) vigilCli;
+  interactiveDev = with pkgs;
+  [ atuin
+    bat
+    cowsay
+    delta
+    direnv
+    eza
+    figlet
+    fish
+    fishPlugins.bass
+    fishPlugins.bobthefish
+    fishPlugins.foreign-env
+    fishPlugins.grc
+    fzf
+    grc
+    iproute2
+    jq
+    just
+    lsof
+    openssh
+    procps
+    ripgrep
+    rsync
+    sqlite
+    starship
+    strace
+    tree
+    tree-sitter
+    nushellPlugins.query
+    nushellPlugins.formats
+    nushellPlugins.gstat
+    nushellPlugins.highlight
+    nushellPlugins.polars
+    nushellPlugins.semver
+  ]
+  ++ [ (if pkgs ? nvim-pkg then pkgs.nvim-pkg else pkgs.neovim) ]
+  ++ lib.optional (vigilCli != null) vigilCli;
 
   # ---------------------------------------------------------------------------
   # Toolchain
   # ---------------------------------------------------------------------------
-  toolchain = with pkgs; [
+  rustToolchain = with pkgs; [
     bzip2
     clangLldWrapper
     cmake
@@ -160,27 +141,42 @@ in
   ];
 
   # ---------------------------------------------------------------------------
-  # Pipeline
+  # Python toolchain
   # ---------------------------------------------------------------------------
-  pipeline = with pkgs;
-    [ grype syft vulnix nushell ]
-    ++ lib.optional
-         (inputs ? staticanalysis && inputs.staticanalysis.packages ? ${pkgs.system})
-         inputs.staticanalysis.packages.${pkgs.system}.default
-    ++ lib.optional
-         (inputs ? dotacat && inputs.dotacat.packages ? ${pkgs.system})
-         inputs.dotacat.packages.${pkgs.system}.default;
+  pythonToolchain = with pkgs; [
+    python3
+    python3Packages.pip
+    python3Packages.virtualenv
+    uv
+  ];
 
   # ---------------------------------------------------------------------------
-  # Agent
+  # Node toolchain
   # ---------------------------------------------------------------------------
-  agent = with pkgs; [
+  nodeToolchain = with pkgs; [
+    nodejs
+    nodePackages.npm
+    nodePackages.typescript
+    nodePackages.yarn
+  ];
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure
+  # Tools for containers that interact with cluster infrastructure.
+  # ---------------------------------------------------------------------------
+  infrastructure = with pkgs; [
     curl
     git
     jq
-    openssh
+    kubectl
     openssl
-  ];
+    sops
+    skopeo
+    oras
+  ]
+  ++ lib.optional
+       (inputs ? cassini-client && inputs.cassini-client.packages ? ${pkgs.system})
+       inputs.cassini-client.packages.${pkgs.system}.default;
 
   # ---------------------------------------------------------------------------
   # Shell package sets

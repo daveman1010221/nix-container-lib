@@ -12,6 +12,7 @@
     vigil-rs.inputs.flake-utils.follows = "flake-utils";
   };
 
+
   outputs = { self, nixpkgs, flake-utils, uutils-micro, vigil-rs }:
     let
       # -------------------------------------------------------------------------
@@ -50,7 +51,13 @@
         pkgs = import nixpkgs { inherit system; };
       in {
         lib = {
-          mkContainer = import ./nix/container.nix;
+          mkContainer = args: import ./nix/container.nix (args // {
+            inputs = (args.inputs or {}) // {
+              uutils-micro = args.inputs.uutils-micro or uutils-micro;
+              vigil-rs     = args.inputs.vigil-rs     or vigil-rs;
+            };
+          });
+
           fromDhall  = import ./nix/from-dhall.nix;
           packages   = import ./nix/packages.nix;
           entrypoint = import ./nix/entrypoint.nix;

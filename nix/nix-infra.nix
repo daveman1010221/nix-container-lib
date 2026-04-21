@@ -22,6 +22,7 @@
 { pkgs
 , system
 , cfg
+, inputs ? {}
 }:
 
 let
@@ -50,7 +51,7 @@ let
   # ---------------------------------------------------------------------------
   usrBinEnv = pkgs.runCommand "usr-bin-env" {} ''
     mkdir -p $out/usr/bin
-    ln -s ${pkgs.coreutils}/bin/env $out/usr/bin/env
+    ln -s ${(inputs.uutils-micro.packages.${system}.default or pkgs.coreutils)}/bin/env $out/usr/bin/env
   '';
 
   # ---------------------------------------------------------------------------

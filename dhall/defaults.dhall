@@ -97,11 +97,10 @@ let devContainer
     = { name = "unnamed-dev"
       , mode = T.Mode.Dev
       , packageLayers =
-        [ T.PackageLayer.Core
+        [ T.PackageLayer.Micro
+        , T.PackageLayer.Core
         , T.PackageLayer.CI
-        , T.PackageLayer.Dev
-        , T.PackageLayer.Toolchain
-        , T.PackageLayer.Pipeline
+        , T.PackageLayer.InteractiveDev
         ]
       , shell = Some defaultInteractiveFishShell
       , pipeline = None T.PipelineConfig
@@ -121,7 +120,10 @@ let ciContainer
     = { name = "unnamed-ci"
       , mode = T.Mode.CI
       , packageLayers =
-        [ T.PackageLayer.Core, T.PackageLayer.CI, T.PackageLayer.Pipeline ]
+        [ T.PackageLayer.Micro
+        , T.PackageLayer.Core
+        , T.PackageLayer.CI
+        ]
       , shell = None T.Shell
       , pipeline = None T.PipelineConfig
       , ssh = None T.SSHConfig
@@ -135,11 +137,15 @@ let ciContainer
       , staticGid = None Natural
       }
 
-let agentContainer
+let infraAgentContainer
     : T.ContainerConfig
-    = { name = "unnamed-agent"
-      , mode = T.Mode.Agent
-      , packageLayers = [ T.PackageLayer.Core, T.PackageLayer.Agent ]
+    = { name = "unnamed-infra-agent"
+      , mode = T.Mode.InfraAgent
+      , packageLayers =
+        [ T.PackageLayer.Micro
+        , T.PackageLayer.Core
+        , T.PackageLayer.Infrastructure
+        ]
       , shell = None T.Shell
       , pipeline = None T.PipelineConfig
       , ssh = None T.SSHConfig
@@ -153,23 +159,25 @@ let agentContainer
       , staticGid = None Natural
       }
 
-let pipelineContainer
+let aiAgentContainer
     : T.ContainerConfig
-    = { name = "unnamed-pipeline"
-      , mode = T.Mode.Pipeline
+    = { name = "unnamed-ai-agent"
+      , mode = T.Mode.AIAgent
       , packageLayers =
-        [ T.PackageLayer.Core, T.PackageLayer.CI, T.PackageLayer.Pipeline ]
-      , shell = None T.Shell
+          [ T.PackageLayer.Micro
+          , T.PackageLayer.Core
+          ]
+      , shell = Some minimalNuShell
       , pipeline = None T.PipelineConfig
-      , ssh = None T.SSHConfig
-      , tls = None T.TLSConfig
+      , ssh = Some defaultSSH
+      , tls = Some defaultTLS
       , nix = defaultNix // { enableDaemon = False }
-      , user = defaultUser // { createUser = False }
+      , user = defaultUser
       , extraEnv = [] : List T.EnvVar
-      , ai = None T.AiConfig
+      , ai = Some defaultAi
       , entrypoint = None Text
-      , staticUid = Some 65532
-      , staticGid = Some 65532
+      , staticUid = None Natural
+      , staticGid = None Natural
       }
 
 -- ---------------------------------------------------------------------------
@@ -214,8 +222,8 @@ let minimalContainer
 
 in  { devContainer
     , ciContainer
-    , agentContainer
-    , pipelineContainer
+    , infraAgentContainer
+    , aiAgentContainer
     , minimalContainer
     , minimalDashShell
     , minimalNuShell
@@ -227,6 +235,4 @@ in  { devContainer
     , defaultUser
     , defaultAi
     , defaultPipelineOutputs
-    -- Kept for backwards compatibility — same as defaultInteractiveFishShell
-    , defaultShell = defaultInteractiveFishShell
     }

@@ -19,11 +19,11 @@ let
   # Mode translation
   # ---------------------------------------------------------------------------
   resolveMode = mode: mode {
-    Dev      = "dev";
-    CI       = "ci";
-    Agent    = "agent";
-    Pipeline = "pipeline";
-    Minimal  = "minimal";
+    Dev       = "dev";
+    CI        = "ci";
+    InfraAgent = "infra-agent";
+    AIAgent   = "ai-agent";
+    Minimal   = "minimal";
   };
 
   mode = resolveMode cfg.mode;
@@ -58,28 +58,30 @@ let
   packageSets = import ./packages.nix { inherit pkgs inputs; };
 
   resolveLayer = layer:
-    let
-      sentinel = layer {
-        Micro     = "Micro";
-        Core      = "Core";
-        CI        = "CI";
-        Dev       = "Dev";
-        Toolchain = "Toolchain";
-        Pipeline  = "Pipeline";
-        Agent     = "Agent";
-        Custom    = payload: { _custom = payload; };
-      };
-    in
-      if sentinel == "Micro"     then packageSets.micro
-      else if sentinel == "Core" then packageSets.core
-      else if sentinel == "CI"   then packageSets.ci
-      else if sentinel == "Dev"  then packageSets.dev
-      else if sentinel == "Toolchain" then packageSets.toolchain
-      else if sentinel == "Pipeline"  then packageSets.pipeline
-      else if sentinel == "Agent"     then packageSets.agent
-      else if sentinel ? _custom then
-        map resolvePackageRef sentinel._custom.packages
-      else throw "from-dhall: unknown PackageLayer variant";
+  let
+    sentinel = layer {
+      Micro          = "Micro";
+      Core           = "Core";
+      CI             = "CI";
+      InteractiveDev = "InteractiveDev";
+      RustToolchain  = "RustToolchain";
+      PythonToolchain = "PythonToolchain";
+      NodeToolchain  = "NodeToolchain";
+      Infrastructure = "Infrastructure";
+      Custom         = payload: { _custom = payload; };
+    };
+  in
+    if sentinel == "Micro"           then packageSets.micro
+    else if sentinel == "Core"       then packageSets.core
+    else if sentinel == "CI"         then packageSets.ci
+    else if sentinel == "InteractiveDev"  then packageSets.interactiveDev
+    else if sentinel == "RustToolchain"   then packageSets.rustToolchain
+    else if sentinel == "PythonToolchain" then packageSets.pythonToolchain
+    else if sentinel == "NodeToolchain"   then packageSets.nodeToolchain
+    else if sentinel == "Infrastructure"  then packageSets.infrastructure
+    else if sentinel ? _custom then
+      map resolvePackageRef sentinel._custom.packages
+    else throw "from-dhall: unknown PackageLayer variant";
 
   resolvedPackages =
     let
@@ -321,8 +323,8 @@ let
 
   # CI and Pipeline modes require pipeline to be set — pipeline-runner won't exist otherwise
   pipelineRequiredAssertion =
-    if (mode == "ci" || mode == "pipeline") && cfg.pipeline == null
-    then throw "from-dhall: ContainerConfig '${cfg.name}': mode = CI or Pipeline requires pipeline to be set. Add pipeline = Some { ... } to your container.dhall."
+    if (mode == "ci") && cfg.pipeline == null
+    then throw "from-dhall: ContainerConfig '${cfg.name}': mode = CI requires pipeline to be set."
     else true;
 
   # In minimal mode: either entrypoint OR shell must be set (shell acts as entrypoint)

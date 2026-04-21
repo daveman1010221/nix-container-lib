@@ -22,6 +22,7 @@
 { pkgs
 , cfg
 , devEnv
+, inputs ? {}
 }:
 
 let
@@ -107,7 +108,7 @@ let
         # Store-path exports (arch-correct — evaluated in target derivation context)
         ##############################################################################
         $env.LOCALE_ARCHIVE      = "${pkgs.glibcLocalesUtf8}/lib/locale/locale-archive"
-        $env.COREUTILS           = "${pkgs.uutils-coreutils-noprefix}"
+        $env.COREUTILS = "${inputs.uutils-micro.packages.${pkgs.system}.default or pkgs.uutils-coreutils-noprefix}"
         $env.OPENSSL_DIR         = "${pkgs.openssl.dev}"
         $env.OPENSSL_LIB_DIR     = "${pkgs.openssl.out}/lib"
         $env.OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include"
@@ -427,8 +428,8 @@ let
     print $" • User ............. ($dev_user.user)  \(uid=($dev_user.uid) / gid=($dev_user.gid)\)"
     print $" • Mode ............. ${cfg.mode}"
     if ("/workspace" | path exists) {
-        let mp = (^mountpoint -q /workspace | complete)
-        if $mp.exit_code == 0 {
+        let is_mounted = (open --raw /proc/mounts | str contains " /workspace ")
+        if $is_mounted {
             print " • Volume mount ..... /workspace is mounted"
         }
     }
@@ -460,7 +461,7 @@ let
 
   # Dropbear SSH service — only for dev/agent with SSH configured
   sshServiceBlock =
-    if cfg.ssh != null && (cfg.mode == "dev" || cfg.mode == "agent")
+    if cfg.mode == "dev" || cfg.mode == "ai-agent" || cfg.mode == "infra-agent"
     then
       let port = toString cfg.ssh.port;
       in ''
@@ -479,99 +480,107 @@ let
     else "";
 
   vigilLayer =
-    if cfg.mode == "ci" || cfg.mode == "pipeline" then ''
-      summary: CI pipeline runner
+  if cfg.mode == "ci" then ''
+    summary: CI pipeline runner
 
-      services:
+    services:
 
-        pipeline-runner:
-          summary: Pipeline runner
-          command: ${nuBin} /etc/pipeline/pipeline_runner.nu
-          startup: enabled
-          logs-forward: passthrough
-          environment:
-            PIPELINE_TARGET: PIPELINE_TARGET_PLACEHOLDER
-          on-success: success-shutdown
-          on-failure: failure-shutdown
-    ''
-    else if cfg.mode == "dev" then ''
-      summary: dev container background services
-      ${nixDaemonServiceBlock}
-      ${sshServiceBlock}
-    ''
-    else if cfg.mode == "agent" then ''
-      summary: agent container services
+      pipeline-runner:
+        summary: Pipeline runner
+        command: ${nuBin} /etc/pipeline/pipeline_runner.nu
+        startup: enabled
+        logs-forward: passthrough
+        environment:
+          PIPELINE_TARGET: PIPELINE_TARGET_PLACEHOLDER
+        on-success: success-shutdown
+        on-failure: failure-shutdown
+  ''
+  else if cfg.mode == "dev" then ''
+    summary: dev container background services
+    ${nixDaemonServiceBlock}
+    ${sshServiceBlock}
+  ''
+  else if cfg.mode == "infra-agent" then ''
+    summary: infrastructure agent services
 
-      services:
+    services:
 
-        agent-supervisor:
-          summary: Agent supervisor
-          command: /bin/agent-supervisor
-          startup: enabled
-          logs-forward: passthrough
-          on-success: restart
-          on-failure: restart
-      ${sshServiceBlock}
-    ''
-    else throw "entrypoint: unknown mode '${cfg.mode}'";
+      agent-supervisor:
+        summary: Agent supervisor
+        command: /bin/agent-supervisor
+        startup: enabled
+        logs-forward: passthrough
+        on-success: success-shutdown
+        on-failure: failure-shutdown
+    ${sshServiceBlock}
+  ''
+  else if cfg.mode == "ai-agent" then ''
+    summary: AI agent background services
+
+    services:
+
+      agent-supervisor:
+        summary: Agent supervisor
+        command: /bin/agent-supervisor
+        startup: enabled
+        logs-forward: passthrough
+        on-success: restart
+        on-failure: restart
+    ${sshServiceBlock}
+  ''
+  else throw "entrypoint: unknown mode '${cfg.mode}'";
 
   phaseVigilExec =
-    if cfg.mode == "ci" || cfg.mode == "pipeline" then ''
-      ##############################################################################
-      # CI/Pipeline: vigild as PID 1
-      ##############################################################################
-      ^mkdir -p /run/vigil/layers
+  if cfg.mode == "ci" || cfg.mode == "infra-agent" then ''
+    ##############################################################################
+    # CI/InfraAgent: vigild as PID 1
+    ##############################################################################
+    ^mkdir -p /run/vigil/layers
 
-      let layer_yaml = "${vigilLayer}"
-          | str replace --all "PIPELINE_TARGET_PLACEHOLDER" ($env.PIPELINE_STAGE? | default "all")
+    let layer_yaml = "${vigilLayer}"
+        | str replace --all "PIPELINE_TARGET_PLACEHOLDER" ($env.PIPELINE_STAGE? | default "all")
 
-      $layer_yaml | save --force /run/vigil/layers/001-container.yaml
+    $layer_yaml | save --force /run/vigil/layers/001-container.yaml
 
-      exec /bin/vigild --layers-dir /run/vigil/layers --socket /run/vigil/vigild.sock
-    ''
-    else ''
-      ##############################################################################
-      # Dev/Agent: vigild backgrounded, shell exec'd as foreground
-      ##############################################################################
-      ^mkdir -p /run/vigil/layers
+    exec /bin/vigild --layers-dir /run/vigil/layers --socket /run/vigil/vigild.sock
+  ''
+  else ''
+    ##############################################################################
+    # Dev/AIAgent: vigild backgrounded, shell exec'd as foreground
+    ##############################################################################
+    ^mkdir -p /run/vigil/layers
 
-      let layer_yaml = "${vigilLayer}"
-          | str replace --all "DEV_USER_PLACEHOLDER" $dev_user.user
+    let layer_yaml = "${vigilLayer}"
+        | str replace --all "DEV_USER_PLACEHOLDER" $dev_user.user
 
-      $layer_yaml | save --force /run/vigil/layers/001-container.yaml
+    $layer_yaml | save --force /run/vigil/layers/001-container.yaml
 
-      # Start vigild in the background to supervise daemons/services.
-      # job spawn detaches it from the foreground — vigild runs independently.
-      job spawn { ^/bin/vigild --layers-dir /run/vigil/layers --socket /run/vigil/vigild.sock }
+    job spawn { ^/bin/vigild --layers-dir /run/vigil/layers --socket /run/vigil/vigild.sock }
 
-      # Wait up to 2s for vigild to initialize (socket appearance = ready)
-      let vigild_ready = (
-          1..20 | each { |_|
-              ^sleep 0.1
-              "/run/vigil/vigild.sock" | path exists
-          } | any { |x| $x }
-      )
-      if not $vigild_ready {
-          warn "vigild did not start within 2s — background services will not be supervised"
-          warn "Container will still function — dropping to shell"
-      }
+    let vigild_ready = (
+        1..20 | each { |_|
+            ^sleep 0.1
+            "/run/vigil/vigild.sock" | path exists
+        } | any { |x| $x }
+    )
+    if not $vigild_ready {
+        warn "vigild did not start within 2s — background services will not be supervised"
+        warn "Container will still function — dropping to shell"
+    }
 
-      # Exec the shell as the foreground process with uid/gid drop.
-      # If we have a named user, use su to get a proper login shell.
-      # Fall back to root shell on any failure — always give the user a shell.
-      if $dev_user.user != "root" {
-          $env.HOME    = $"/home/($dev_user.user)"
-          $env.USER    = $dev_user.user
-          $env.LOGNAME = $dev_user.user
-          $env.SHELL   = "${shellBin}"
-          $env.XDG_CACHE_HOME  = $"/home/($dev_user.user)/.cache"
-          $env.XDG_CONFIG_HOME = $"/home/($dev_user.user)/.config"
-          $env.XDG_DATA_HOME   = $"/home/($dev_user.user)/.local/share"
-          exec chroot --userspec $"($dev_user.uid):($dev_user.gid)" / ${shellBin} -l
-      } else {
-          exec ${shellBin}
-      }
-    '';
+    if $dev_user.user != "root" {
+        $env.HOME    = $"/home/($dev_user.user)"
+        $env.USER    = $dev_user.user
+        $env.LOGNAME = $dev_user.user
+        $env.SHELL   = "${shellBin}"
+        $env.XDG_CACHE_HOME  = $"/home/($dev_user.user)/.cache"
+        $env.XDG_CONFIG_HOME = $"/home/($dev_user.user)/.config"
+        $env.XDG_DATA_HOME   = $"/home/($dev_user.user)/.local/share"
+        exec chroot --userspec $"($dev_user.uid):($dev_user.gid)" / ${shellBin} -l
+    } else {
+        exec ${shellBin}
+    }
+  '';
 
 in
   pkgs.writeTextFile {

@@ -13,7 +13,7 @@
       u.Auto;
     trustedUsers = [ "root" ];
   };
-  packageLayers = [ (u: u.Core) (u: u.CI) (u: u.Pipeline) ];
+  packageLayers = [ (u: u.Micro) (u: u.Core) (u: u.CI) ];
   pipeline = {
     artifactDir = "/workspace/pipeline-out";
     name = "smoke-test-pipeline";

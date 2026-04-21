@@ -7,7 +7,7 @@
 -- ---------------------------------------------------------------------------
 -- Mode
 -- ---------------------------------------------------------------------------
-let Mode = < Dev | CI | Agent | Pipeline | Minimal >
+let Mode = < Dev | CI | InfraAgent | AIAgent | Minimal >
 
 let FailureMode = < FailFast | Collect >
 
@@ -18,13 +18,14 @@ let EnvVar = { name : Text, value : Text, placement : EnvVarPlacement }
 let PackageRef = { attrPath : Text, flakeInput : Optional Text }
 
 let PackageLayer =
-      < Core
-      | Micro
+      < Micro
+      | Core
       | CI
-      | Dev
-      | Toolchain
-      | Pipeline
-      | Agent
+      | InteractiveDev
+      | RustToolchain
+      | PythonToolchain
+      | NodeToolchain
+      | Infrastructure
       | Custom : { name : Text, packages : List PackageRef }
       >
 
