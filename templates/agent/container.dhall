@@ -13,11 +13,11 @@
 -- For truly size-critical agents, consider using Micro instead of Core
 -- as the base layer — see the comment in packageLayers below.
 
-let Lib = https://raw.githubusercontent.com/daveman1010221/nix-container-lib/9da4924831c8e0d81d57448425d6cd10820b71d2/dhall/prelude.dhall
-        sha256:18acbbb5708565905ab9522fa77a81eb402851f06870a34a22f6c979001c4571
+let Lib = https://raw.githubusercontent.com/daveman1010221/nix-container-lib/56702e6c048b03a4a1773d19a6cb58644f5b577a/dhall/prelude.dhall
+        sha256:f75818ad203cb90a5e5921b75cd60bcb66ac5753cf7eba976538bf71e855378c
 let defaults = Lib.defaults
 
-in defaults.agentContainer //
+in defaults.infraAgentContainer //
   { name = "my-project-agent"
 
   , packageLayers =
@@ -25,12 +25,7 @@ in defaults.agentContainer //
         -- Micro: cacert, minimal uutils, getent, openssl. Smaller but no Nix or locales.
         -- Use Micro if your agent doesn't need nix or compression tools.
         Lib.PackageLayer.Core
-      , Lib.PackageLayer.Agent
-
-      , Lib.customLayer "agent-runtime"
-          [ Lib.nixpkgs "curl"
-          -- , Lib.flakePackage "myAgentBinary" "packages.default"
-          ]
+      , Lib.PackageLayer.Infrastructure
       ]
 
   , tls = Some

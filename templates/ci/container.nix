@@ -3,7 +3,7 @@
   entrypoint = null;
   extraEnv = [];
   mode = u:
-    u.Pipeline;
+    u.CI;
   name = "my-project-ci";
   nix = {
     buildUserCount = u:
@@ -13,7 +13,7 @@
       u.Auto;
     trustedUsers = [ "root" ];
   };
-  packageLayers = [ (u: u.Core) (u: u.CI) (u: u.Pipeline) ];
+  packageLayers = [ (u: u.Core) (u: u.CI) ];
   pipeline = {
     artifactDir = "/workspace/pipeline-out";
     name = "my-project-pipeline";
@@ -76,8 +76,8 @@
   };
   shell = null;
   ssh = null;
-  staticGid = 65532;
-  staticUid = 65532;
+  staticGid = null;
+  staticUid = null;
   tls = null;
   user = {
     createUser = false;

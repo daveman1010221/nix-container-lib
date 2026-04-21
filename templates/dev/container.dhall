@@ -5,8 +5,8 @@
 -- Full type reference: nix-container-lib/dhall/types.dhall
 -- Available defaults:  nix-container-lib/dhall/defaults.dhall
 
-let Lib = https://raw.githubusercontent.com/daveman1010221/nix-container-lib/9da4924831c8e0d81d57448425d6cd10820b71d2/dhall/prelude.dhall
-        sha256:18acbbb5708565905ab9522fa77a81eb402851f06870a34a22f6c979001c4571
+let Lib = https://raw.githubusercontent.com/daveman1010221/nix-container-lib/56702e6c048b03a4a1773d19a6cb58644f5b577a/dhall/prelude.dhall
+        sha256:f75818ad203cb90a5e5921b75cd60bcb66ac5753cf7eba976538bf71e855378c
 let defaults = Lib.defaults
 
 let FailureMode = Lib.FailureMode
@@ -22,9 +22,8 @@ in defaults.devContainer //
   , packageLayers =
       [ Lib.PackageLayer.Core
       , Lib.PackageLayer.CI
-      , Lib.PackageLayer.Dev
-      , Lib.PackageLayer.Toolchain
-      , Lib.PackageLayer.Pipeline
+      , Lib.PackageLayer.InteractiveDev
+      --, Lib.PackageLayer.RustToolchain
 
       -- Add project-specific packages here:
       -- , Lib.customLayer "my-extras"

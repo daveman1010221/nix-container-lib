@@ -20,18 +20,7 @@
       u.Auto;
     trustedUsers = [ "root" ];
   };
-  packageLayers = [
-    (u:
-      u.Core)
-    (u:
-      u.CI)
-    (u:
-      u.Dev)
-    (u:
-      u.Toolchain)
-    (u:
-      u.Pipeline)
-  ];
+  packageLayers = [ (u: u.Core) (u: u.CI) (u: u.InteractiveDev) ];
   pipeline = {
     artifactDir = "/workspace/pipeline-out";
     name = "my-project-pipeline";

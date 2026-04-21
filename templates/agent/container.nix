@@ -5,7 +5,7 @@
     { name = "AGENT_MODE"; placement = u: u.BuildTime; value = "production"; }
   ];
   mode = u:
-    u.Agent;
+    u.InfraAgent;
   name = "my-project-agent";
   nix = {
     buildUserCount = u:
@@ -15,17 +15,7 @@
       u.Auto;
     trustedUsers = [ "root" ];
   };
-  packageLayers = [
-    (u:
-      u.Core)
-    (u:
-      u.Agent)
-    (u:
-      u.Custom {
-        name = "agent-runtime";
-        packages = [ { attrPath = "curl"; flakeInput = null; } ];
-      })
-  ];
+  packageLayers = [ (u: u.Core) (u: u.Infrastructure) ];
   pipeline = null;
   shell = null;
   ssh = null;
