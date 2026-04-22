@@ -461,22 +461,24 @@ let
 
   # Dropbear SSH service — only for dev/agent with SSH configured
   sshServiceBlock =
-    if cfg.mode == "dev" || cfg.mode == "ai-agent" || cfg.mode == "infra-agent"
-    then
-      let port = toString cfg.ssh.port;
-      in ''
-
-        dropbear:
-          summary: SSH server (Dropbear)
-          command: >-
-            dropbear -F -E -e -a -s
-            -r /home/DEV_USER_PLACEHOLDER/.ssh/dropbear_rsa_host_key
-            -r /home/DEV_USER_PLACEHOLDER/.ssh/dropbear_ed25519_host_key
-            -p 0.0.0.0:${port}
-          startup: disabled
-          on-success: restart
-          on-failure: restart
-      ''
+    if cfg.ssh != null then
+      if cfg.mode == "dev" || cfg.mode == "ai-agent" || cfg.mode == "infra-agent"
+      then
+        let port = toString cfg.ssh.port;
+        in ''
+  
+          dropbear:
+            summary: SSH server (Dropbear)
+            command: >-
+              dropbear -F -E -e -a -s
+              -r /home/DEV_USER_PLACEHOLDER/.ssh/dropbear_rsa_host_key
+              -r /home/DEV_USER_PLACEHOLDER/.ssh/dropbear_ed25519_host_key
+              -p 0.0.0.0:${port}
+            startup: disabled
+            on-success: restart
+            on-failure: restart
+        ''
+      else ""
     else "";
 
   vigilLayer =

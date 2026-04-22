@@ -1,11 +1,11 @@
 {
-  ai = null;
+  ai = { enable = false; llamaPort = 8080; modelsPath = "/opt/llama-models"; };
   entrypoint = null;
   extraEnv = [
     { name = "AGENT_MODE"; placement = u: u.BuildTime; value = "production"; }
   ];
   mode = u:
-    u.InfraAgent;
+    u.AIAgent;
   name = "my-project-agent";
   nix = {
     buildUserCount = u:
@@ -15,15 +15,16 @@
       u.Auto;
     trustedUsers = [ "root" ];
   };
-  packageLayers = [ (u: u.Core) (u: u.Infrastructure) ];
+  packageLayers = [ (u: u.Micro) (u: u.Core) ];
   pipeline = null;
-  shell = null;
-  ssh = null;
+  shell = u:
+    u.Minimal { shell = "/bin/nu"; };
+  ssh = { enable = false; port = 2223; };
   staticGid = null;
   staticUid = null;
   tls = { certsPath = null; enable = true; generateCerts = true; };
   user = {
-    createUser = false;
+    createUser = true;
     defaultShell = "/bin/fish";
     skeletonPath = "/etc/container-skel";
     supplementalGroups = [];

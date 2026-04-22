@@ -313,9 +313,11 @@ let
     let
       hasBase = layer: layer {
         Micro = true; Core = true;
-        CI = false; Dev = false; Toolchain = false;
-        Pipeline = false; Agent = false; Custom = _: false;
+        CI = false; InteractiveDev = false; RustToolchain = false;
+        PythonToolchain = false; NodeToolchain = false; Infrastructure = false;
+        Custom = _: false;
       };
+
     in
     if builtins.any hasBase cfg.packageLayers
     then true
@@ -343,16 +345,16 @@ let
     else true;
 
   hasToolchain = builtins.any (layer: layer {
-      Micro     = false;
-      Core      = false;
-      CI        = false;
-      Dev       = false;
-      Toolchain = true;
-      Pipeline  = false;
-      Agent     = false;
-      Custom    = _: false;
-    }) cfg.packageLayers;
-
+    Micro          = false;
+    Core           = false;
+    CI             = false;
+    InteractiveDev = false;
+    RustToolchain  = true;
+    PythonToolchain = true;
+    NodeToolchain  = true;
+    Infrastructure = false;
+    Custom         = _: false;
+  }) cfg.packageLayers;
 in
   assert tlsAssertion;
   assert baseLayerAssertion;

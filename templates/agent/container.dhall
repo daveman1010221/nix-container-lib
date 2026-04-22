@@ -1,32 +1,41 @@
 -- templates/agent/container.dhall
 --
--- Agent container configuration template.
+-- AI agent container configuration template.
 --
--- Agent containers are long-running autonomous processes.
+-- AI agent containers are interactive autonomous processes with operator access.
 -- Key properties:
---   - No interactive shell (shell = None)
+--   - Minimal nushell for operator interaction
+--   - vigild supervises the agent-supervisor process
 --   - mTLS enabled (agents authenticate via cert)
 --   - Nix daemon disabled (agents don't run builds)
 --   - Package set is minimal — declare exactly what the agent needs
---   - start.sh runs, then execs your agent binary
---
--- For truly size-critical agents, consider using Micro instead of Core
--- as the base layer — see the comment in packageLayers below.
+--   - Add a toolchain layer if your agent needs to build code:
+--       , Lib.PackageLayer.RustToolchain
+--       , Lib.PackageLayer.PythonToolchain
+--       , Lib.PackageLayer.NodeToolchain
+--   - Add Infrastructure if your agent needs cluster tools:
+--       , Lib.PackageLayer.Infrastructure
 
-let Lib = https://raw.githubusercontent.com/daveman1010221/nix-container-lib/56702e6c048b03a4a1773d19a6cb58644f5b577a/dhall/prelude.dhall
+let Lib =
+      https://raw.githubusercontent.com/daveman1010221/nix-container-lib/7b5ba3f9c44faaa29279f1e7400d8254c969bde2/dhall/prelude.dhall
         sha256:f75818ad203cb90a5e5921b75cd60bcb66ac5753cf7eba976538bf71e855378c
+
 let defaults = Lib.defaults
 
-in defaults.infraAgentContainer //
+in defaults.aiAgentContainer //
   { name = "my-project-agent"
 
   , packageLayers =
-      [ -- Core: coreutils, cacert, openssl, getent, gnutar, gzip, locales, nix.
-        -- Micro: cacert, minimal uutils, getent, openssl. Smaller but no Nix or locales.
-        -- Use Micro if your agent doesn't need nix or compression tools.
-        Lib.PackageLayer.Core
-      , Lib.PackageLayer.Infrastructure
+      [ Lib.PackageLayer.Micro
+      , Lib.PackageLayer.Core
+      -- Add agent-specific packages here:
+      -- , Lib.customLayer "agent-runtime"
+      --     [ Lib.flakePackage "myAgentBinary" "packages.default"
+      --     , Lib.nixpkgs "sqlite"
+      --     ]
       ]
+
+  , shell = Some defaults.minimalNuShell
 
   , tls = Some
       ( defaults.defaultTLS //
