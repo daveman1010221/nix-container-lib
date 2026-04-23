@@ -17,7 +17,7 @@
 --       , Lib.PackageLayer.Infrastructure
 
 let Lib =
-      https://raw.githubusercontent.com/daveman1010221/nix-container-lib/4ca82a1f8074b5d2084b54bcb82c8d45da58f3ad/dhall/prelude.dhall
+      https://raw.githubusercontent.com/daveman1010221/nix-container-lib/16af369f9587aeee9c7b675bc3581b4bb5ffdf6e/dhall/prelude.dhall
         sha256:f75818ad203cb90a5e5921b75cd60bcb66ac5753cf7eba976538bf71e855378c
 
 let defaults = Lib.defaults
