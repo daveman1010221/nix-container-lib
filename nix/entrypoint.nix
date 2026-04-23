@@ -140,7 +140,7 @@ let
 
           file-append /etc/shadow $"($username):!x:::::::\n"
 
-          mkdir -p $"/home/($username)"
+          mkdir $"/home/($username)"
           ^chmod -R 755 $"/home/($username)"
           ^chown -R $"($uid):($gid)" $"/home/($username)"
 
@@ -226,7 +226,7 @@ let
       # AI tooling setup
       ##############################################################################
       if ("/opt/llama-models" | path exists) {
-          ^mkdir -p $"/home/($dev_user.user)/.cache/huggingface"
+          mkdir $"/home/($dev_user.user)/.cache/huggingface"
           ^ln -sfn /opt/llama-models $"/home/($dev_user.user)/.cache/llama.cpp"
           ^ln -sfn /opt/llama-models $"/home/($dev_user.user)/.cache/huggingface/hub"
           ^chown -h $"($dev_user.uid):($dev_user.gid)" $"/home/($dev_user.user)/.cache/llama.cpp"
@@ -274,13 +274,13 @@ let
               "root ALL=(ALL:ALL) ALL\n#includedir /etc/sudoers.d\n" | save /etc/sudoers
               ^chmod 440 /etc/sudoers
           }
-          ^mkdir -p /etc/sudoers.d
+          mkdir /etc/sudoers.d
           let llama_bin = (which llama-server | get path? | first? | default "")
           if not ($llama_bin | is-empty) {
               $"($dev_user.user) ALL=(root) NOPASSWD: ($llama_bin)\n" | save /etc/sudoers.d/llama-server
               ^chmod 440 /etc/sudoers.d/llama-server
           }
-          ^mkdir -p /etc/pam.d
+          mkdir /etc/pam.d
           [ "auth       sufficient   pam_permit.so"
             "account    sufficient   pam_permit.so"
             "session    sufficient   pam_permit.so" ]
@@ -323,7 +323,7 @@ let
 
         file-append /etc/group   "nixbld:x:30000:\n"
         file-append /etc/gshadow "nixbld:x::\n"
-        ^mkdir -p /var/empty
+        mkdir /var/empty
 
         let dummy_shell = if ("/bin/nologin" | path exists) { "/bin/nologin" } else { "/bin/false" }
 
@@ -392,7 +392,7 @@ let
       ##############################################################################
       if ("${pkgs.openssh}/libexec/sftp-server" | path exists) {
           ^ln -sf "${pkgs.openssh}/libexec/sftp-server" /bin/sftp-server
-          ^mkdir -p /run/current-system/sw/libexec
+          mkdir /run/current-system/sw/libexec
           ^ln -sf "${pkgs.openssh}/libexec/sftp-server" /run/current-system/sw/libexec/sftp-server
       }
     ''
@@ -408,7 +408,7 @@ let
       # Cargo target cache
       ##############################################################################
       let cargo_target = "/var/cache/cargo-target"
-      ^mkdir -p $cargo_target
+      mkdir $cargo_target
       ^chown -R $"($dev_user.uid):($dev_user.gid)" /var/cache
       ^chmod 0755 $cargo_target
       $env.CARGO_TARGET_DIR = $cargo_target
@@ -537,7 +537,7 @@ let
     ##############################################################################
     # CI/InfraAgent: vigild as PID 1
     ##############################################################################
-    ^mkdir -p /run/vigil/layers
+    mkdir /run/vigil/layers
 
     let layer_yaml = "${vigilLayer}"
         | str replace --all "PIPELINE_TARGET_PLACEHOLDER" ($env.PIPELINE_STAGE? | default "all")
@@ -550,7 +550,7 @@ let
     ##############################################################################
     # Dev/AIAgent: vigild backgrounded, shell exec'd as foreground
     ##############################################################################
-    ^mkdir -p /run/vigil/layers
+    mkdir /run/vigil/layers
 
     let layer_yaml = "${vigilLayer}"
         | str replace --all "DEV_USER_PLACEHOLDER" $dev_user.user
