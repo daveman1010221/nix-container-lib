@@ -140,7 +140,7 @@ let
 
           file-append /etc/shadow $"($username):!x:::::::\n"
 
-          ^mkdir -p $"/home/($username)"
+          mkdir -p $"/home/($username)"
           ^chmod -R 755 $"/home/($username)"
           ^chown -R $"($uid):($gid)" $"/home/($username)"
 
@@ -167,7 +167,7 @@ let
           }
           '' else ''
           ^install -Dm644 "${cfg.user.skeletonPath}/config.fish" $"/home/($username)/.config/fish/config.fish"
-          ^touch $"/home/($username)/.config/fish/fish_variables"
+          touch $"/home/($username)/.config/fish/fish_variables"
           ''}
 
           ^chown -R $"($uid):($gid)" $"/home/($username)"
