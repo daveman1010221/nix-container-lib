@@ -109,6 +109,7 @@ let
         ##############################################################################
         $env.LOCALE_ARCHIVE      = "${pkgs.glibcLocalesUtf8}/lib/locale/locale-archive"
         $env.COREUTILS = "${inputs.uutils-micro.packages.${pkgs.system}.default or pkgs.uutils-coreutils-noprefix}"
+        $env.PATH = ($env.PATH | split row ":" | prepend $"($env.COREUTILS)/bin" | str join ":")
         $env.OPENSSL_DIR         = "${pkgs.openssl.dev}"
         $env.OPENSSL_LIB_DIR     = "${pkgs.openssl.out}/lib"
         $env.OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include"
