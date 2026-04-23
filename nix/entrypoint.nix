@@ -562,7 +562,7 @@ let
 
     let vigild_ready = (
         1..20 | each { |_|
-            sleep 0.1
+            sleep 100ms
             "/run/vigil/vigild.sock" | path exists
         } | any { |x| $x }
     )
