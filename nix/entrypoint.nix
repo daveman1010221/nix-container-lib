@@ -227,17 +227,17 @@ let
       ##############################################################################
       if ("/opt/llama-models" | path exists) {
           mkdir $"/home/($dev_user.user)/.cache/huggingface"
-          ^ln -sfn /opt/llama-models $"/home/($dev_user.user)/.cache/llama.cpp"
-          ^ln -sfn /opt/llama-models $"/home/($dev_user.user)/.cache/huggingface/hub"
+          ln -sfn /opt/llama-models $"/home/($dev_user.user)/.cache/llama.cpp"
+          ln -sfn /opt/llama-models $"/home/($dev_user.user)/.cache/huggingface/hub"
           ^chown -h $"($dev_user.uid):($dev_user.gid)" $"/home/($dev_user.user)/.cache/llama.cpp"
           ^chown -h $"($dev_user.uid):($dev_user.gid)" $"/home/($dev_user.user)/.cache/huggingface/hub"
       }
       if ("/opt/ollama" | path exists) {
-          ^ln -sfn /opt/ollama $"/home/($dev_user.user)/.ollama"
+          ln -sfn /opt/ollama $"/home/($dev_user.user)/.ollama"
           ^chown -h $"($dev_user.uid):($dev_user.gid)" $"/home/($dev_user.user)/.ollama"
       }
       if ("/opt/pi" | path exists) {
-          ^ln -sfn /opt/pi $"/home/($dev_user.user)/.pi"
+          ln -sfn /opt/pi $"/home/($dev_user.user)/.pi"
           ^chown -h $"($dev_user.uid):($dev_user.gid)" $"/home/($dev_user.user)/.pi"
       }
       if (which ollama | is-not-empty) {
@@ -267,7 +267,7 @@ let
           | if $in.exit_code == 0 { $in.stdout | str trim } else { "" }
       )
       if not ($sudo_real | is-empty) {
-          ^cp $sudo_real /usr/bin/sudo
+          cp $sudo_real /usr/bin/sudo
           ^chown root:root /usr/bin/sudo
           ^chmod 4755 /usr/bin/sudo
           if not ("/etc/sudoers" | path exists) {
@@ -357,13 +357,13 @@ let
         if ("/nix/var/nix/db/db.sqlite" | path type) == "symlink" {
             let db_src = ("/nix/var/nix/db/db.sqlite" | path expand | path dirname)
             let tmp = (^mktemp -d | str trim)
-            ^cp -r $"($db_src)/." $tmp
+            cp -r $"($db_src)/." $tmp
             for f in ["db.sqlite" "db.sqlite-shm" "db.sqlite-wal" "big-lock" "reserved" "schema"] {
                 let p = $"/nix/var/nix/db/($f)"
-                if ($p | path exists) { ^rm -f $p }
+                if ($p | path exists) { rm -f $p }
             }
-            ^cp -r $"($tmp)/." /nix/var/nix/db/
-            ^rm -rf $tmp
+            cp -r $"($tmp)/." /nix/var/nix/db/
+            rm -rf $tmp
             ^chmod 644 /nix/var/nix/db/db.sqlite
             ^chmod 600 /nix/var/nix/db/big-lock
             ^chmod 600 /nix/var/nix/db/reserved
@@ -391,9 +391,9 @@ let
       # SFTP symlink
       ##############################################################################
       if ("${pkgs.openssh}/libexec/sftp-server" | path exists) {
-          ^ln -sf "${pkgs.openssh}/libexec/sftp-server" /bin/sftp-server
+          ln -sf "${pkgs.openssh}/libexec/sftp-server" /bin/sftp-server
           mkdir /run/current-system/sw/libexec
-          ^ln -sf "${pkgs.openssh}/libexec/sftp-server" /run/current-system/sw/libexec/sftp-server
+          ln -sf "${pkgs.openssh}/libexec/sftp-server" /run/current-system/sw/libexec/sftp-server
       }
     ''
     else "";
@@ -423,7 +423,7 @@ let
     # Banner
     ##############################################################################
     if ("/etc/container-info" | path exists) {
-        ^cat /etc/container-info
+        open --raw /etc/container-info
     }
     print $" • User ............. ($dev_user.user)  \(uid=($dev_user.uid) / gid=($dev_user.gid)\)"
     print $" • Mode ............. ${cfg.mode}"
@@ -561,7 +561,7 @@ let
 
     let vigild_ready = (
         1..20 | each { |_|
-            ^sleep 0.1
+            sleep 0.1
             "/run/vigil/vigild.sock" | path exists
         } | any { |x| $x }
     )
