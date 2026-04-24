@@ -456,15 +456,7 @@ let
   # Nix daemon service — only when enabled, only for dev/agent
   nixDaemonServiceBlock =
     if cfg.nix.enableDaemon
-    then ''
-
-        nix-daemon:
-          summary: Nix build daemon
-          command: /bin/nix-daemon --daemon
-          startup: enabled
-          on-success: restart
-          on-failure: restart
-      ''
+    then "  nix-daemon:\n    summary: Nix build daemon\n    command: /bin/nix-daemon --daemon\n    startup: enabled\n    on-success: restart\n    on-failure: restart\n\n"
     else "";
 
   # Dropbear SSH service — only for dev/agent with SSH configured
@@ -473,19 +465,7 @@ let
       if cfg.mode == "dev" || cfg.mode == "ai-agent" || cfg.mode == "infra-agent"
       then
         let port = toString cfg.ssh.port;
-        in ''
-  
-          dropbear:
-            summary: SSH server (Dropbear)
-            command: >-
-              dropbear -F -E -e -a -s
-              -r /home/DEV_USER_PLACEHOLDER/.ssh/dropbear_rsa_host_key
-              -r /home/DEV_USER_PLACEHOLDER/.ssh/dropbear_ed25519_host_key
-              -p 0.0.0.0:${port}
-            startup: disabled
-            on-success: restart
-            on-failure: restart
-        ''
+        in "  dropbear:\n    summary: SSH server (Dropbear)\n    command: >-\n      dropbear -F -E -e -a -s\n      -r /home/DEV_USER_PLACEHOLDER/.ssh/dropbear_rsa_host_key\n      -r /home/DEV_USER_PLACEHOLDER/.ssh/dropbear_ed25519_host_key\n      -p 0.0.0.0:${port}\n    startup: disabled\n    on-success: restart\n    on-failure: restart\n"
       else ""
     else "";
 
