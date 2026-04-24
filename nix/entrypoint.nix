@@ -358,16 +358,13 @@ let
         if ("/nix/var/nix/db/db.sqlite" | path type) == "symlink" {
             let db_src = ("/nix/var/nix/db/db.sqlite" | path expand | path dirname)
             let tmp = (^mktemp -d | str trim)
-            cp -r $"($db_src)/." $tmp
+            ls $db_src | get name | each { |f| cp --preserve [] $f $tmp; null }
             for f in ["db.sqlite" "db.sqlite-shm" "db.sqlite-wal" "big-lock" "reserved" "schema"] {
                 let p = $"/nix/var/nix/db/($f)"
                 if ($p | path exists) { rm -f $p }
             }
-            cp -r $"($tmp)/." /nix/var/nix/db/
+            ls $tmp | get name | each { |f| cp --preserve [] $f /nix/var/nix/db/; null }
             rm -rf $tmp
-            ^chmod 644 /nix/var/nix/db/db.sqlite
-            ^chmod 600 /nix/var/nix/db/big-lock
-            ^chmod 600 /nix/var/nix/db/reserved
         }
 
         ##############################################################################
