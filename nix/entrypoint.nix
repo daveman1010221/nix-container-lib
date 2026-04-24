@@ -313,7 +313,7 @@ let
           else if cfg.nix.sandboxPolicy == "disabled" then
             ''file-append /etc/nix/nix.conf "\nsandbox = false\n"''
           else ''
-            let cpu_impl = (open --raw /proc/cpuinfo | lines | where { str contains "CPU implementer" } | first? | default "" | split row ":" | last | str trim)
+            let cpu_impl = (open --raw /proc/cpuinfo | lines | where { str contains "CPU implementer" } | get 0? | default "" | split row ":" | last | str trim)
             if $cpu_impl == "0x00" {
                 file-append /etc/nix/nix.conf "\nsandbox = false\nfilter-syscalls = false\n"
             }
