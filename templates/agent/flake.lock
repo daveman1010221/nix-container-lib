@@ -30,27 +30,27 @@
         "vigil-rs": "vigil-rs"
       },
       "locked": {
-        "lastModified": 1777048980,
-        "narHash": "sha256-iKn0WIPZlpIWwMN3qjsDPy5W+Ns2MIxNOggZrBAcKgw=",
+        "lastModified": 1777068530,
+        "narHash": "sha256-lc+iywcM4Nqk2A00HlW8vXnciG3cNX76+/MGT8lGoeo=",
         "owner": "daveman1010221",
         "repo": "nix-container-lib",
-        "rev": "49af3817a5197ab7bd95ce1b46c487af1dce424d",
+        "rev": "d737b3e0f61112409322e8f91baae88ef926cf94",
         "type": "github"
       },
       "original": {
         "owner": "daveman1010221",
         "repo": "nix-container-lib",
-        "rev": "49af3817a5197ab7bd95ce1b46c487af1dce424d",
+        "rev": "d737b3e0f61112409322e8f91baae88ef926cf94",
         "type": "github"
       }
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1776548001,
-        "narHash": "sha256-ZSK0NL4a1BwVbbTBoSnWgbJy9HeZFXLYQizjb2DPF24=",
+        "lastModified": 1776877367,
+        "narHash": "sha256-EHq1/OX139R1RvBzOJ0aMRT3xnWyqtHBRUBuO1gFzjI=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "b12141ef619e0a9c1c84dc8c684040326f27cdcc",
+        "rev": "0726a0ecb6d4e08f6adced58726b95db924cef57",
         "type": "github"
       },
       "original": {
