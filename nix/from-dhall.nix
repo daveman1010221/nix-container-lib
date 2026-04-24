@@ -20,7 +20,6 @@ let
   # ---------------------------------------------------------------------------
   resolveMode = mode: mode {
     Dev       = "dev";
-    CI        = "ci";
     InfraAgent = "infra-agent";
     AIAgent   = "ai-agent";
     Minimal   = "minimal";
@@ -62,7 +61,6 @@ let
     sentinel = layer {
       Micro          = "Micro";
       Core           = "Core";
-      CI             = "CI";
       InteractiveDev = "InteractiveDev";
       RustToolchain  = "RustToolchain";
       PythonToolchain = "PythonToolchain";
@@ -73,7 +71,6 @@ let
   in
     if sentinel == "Micro"           then packageSets.micro
     else if sentinel == "Core"       then packageSets.core
-    else if sentinel == "CI"         then packageSets.ci
     else if sentinel == "InteractiveDev"  then packageSets.interactiveDev
     else if sentinel == "RustToolchain"   then packageSets.rustToolchain
     else if sentinel == "PythonToolchain" then packageSets.pythonToolchain
@@ -313,7 +310,6 @@ let
     let
       hasBase = layer: layer {
         Micro = true; Core = true;
-        CI = false; InteractiveDev = false; RustToolchain = false;
         PythonToolchain = false; NodeToolchain = false; Infrastructure = false;
         Custom = _: false;
       };
@@ -322,12 +318,6 @@ let
     if builtins.any hasBase cfg.packageLayers
     then true
     else throw "from-dhall: ContainerConfig '${cfg.name}': packageLayers must include Micro or Core";
-
-  # CI and Pipeline modes require pipeline to be set — pipeline-runner won't exist otherwise
-  pipelineRequiredAssertion =
-    if (mode == "ci") && cfg.pipeline == null
-    then throw "from-dhall: ContainerConfig '${cfg.name}': mode = CI requires pipeline to be set."
-    else true;
 
   # In minimal mode: either entrypoint OR shell must be set (shell acts as entrypoint)
   minimalAssertion =
@@ -347,7 +337,6 @@ let
   hasToolchain = builtins.any (layer: layer {
     Micro          = false;
     Core           = false;
-    CI             = false;
     InteractiveDev = false;
     RustToolchain  = true;
     PythonToolchain = true;
@@ -358,7 +347,6 @@ let
 in
   assert tlsAssertion;
   assert baseLayerAssertion;
-  assert pipelineRequiredAssertion;
   assert minimalAssertion;
   assert interactiveInMinimalAssertion;
 

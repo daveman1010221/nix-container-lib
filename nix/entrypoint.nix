@@ -16,7 +16,6 @@
 #   9.  Cargo cache          (cfg.hasToolchain)
 #  10.  Banner
 #  11.  Write vigil layer + launch
-#       - ci/pipeline: vigild as PID 1, pipeline-runner supervised
 #       - dev/agent:   vigild backgrounded, shell exec'd as foreground
 
 { pkgs
@@ -448,7 +447,6 @@ let
   # ---------------------------------------------------------------------------
   # Phase 11: Vigil layer + launch
   #
-  # CI/pipeline: vigild as PID 1, pipeline-runner supervised with passthrough logs
   # Dev/agent:   vigild backgrounded managing background services,
   #              shell exec'd as foreground with graceful degradation
   # ---------------------------------------------------------------------------
@@ -470,22 +468,7 @@ let
     else "";
 
   vigilLayer =
-  if cfg.mode == "ci" then ''
-    summary: CI pipeline runner
-
-    services:
-
-      pipeline-runner:
-        summary: Pipeline runner
-        command: ${nuBin} /etc/pipeline/pipeline_runner.nu
-        startup: enabled
-        logs-forward: passthrough
-        environment:
-          PIPELINE_TARGET: PIPELINE_TARGET_PLACEHOLDER
-        on-success: success-shutdown
-        on-failure: failure-shutdown
-  ''
-  else if cfg.mode == "dev" then ''
+  if cfg.mode == "dev" then ''
     summary: dev container background services
 
     services:
@@ -523,20 +506,7 @@ let
   else throw "entrypoint: unknown mode '${cfg.mode}'";
 
   phaseVigilExec =
-  if cfg.mode == "ci" || cfg.mode == "infra-agent" then ''
-    ##############################################################################
-    # CI/InfraAgent: vigild as PID 1
-    ##############################################################################
-    mkdir /run/vigil/layers
-
-    let layer_yaml = "${vigilLayer}"
-        | str replace --all "PIPELINE_TARGET_PLACEHOLDER" ($env.PIPELINE_STAGE? | default "all")
-
-    $layer_yaml | save --force /run/vigil/layers/001-container.yaml
-
-    exec /bin/vigild --layers-dir /run/vigil/layers --socket /run/vigil/vigild.sock
   ''
-  else ''
     ##############################################################################
     # Dev/AIAgent: vigild backgrounded, shell exec'd as foreground
     ##############################################################################

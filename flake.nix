@@ -23,10 +23,6 @@
           path        = ./templates/dev;
           description = "Interactive developer container with full toolchain";
         };
-        ci = {
-          path        = ./templates/ci;
-          description = "Headless CI container with pipeline runner";
-        };
         agent = {
           path        = ./templates/agent;
           description = "Autonomous agent container with mTLS";

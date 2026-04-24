@@ -5,10 +5,9 @@
 # is used for.
 #
 # The script is mode-aware: it shows different information depending on
-# whether the container is a dev, CI, agent, or pipeline container.
+# whether the container is a dev, agent, or pipeline container.
 # This means a developer running container-help in a dev container sees
-# developer-relevant information, while a CI operator sees CI-relevant
-# information.
+# developer-relevant information.
 #
 # The script is a pkgs.writeShellScriptBin derivation so it lands in
 # /bin/container-help via the devEnv buildEnv symlink tree — a stable,
@@ -60,19 +59,6 @@ let
         • The nixpkgs registry is pinned to the build-time revision
         • 'nix shell nixpkgs#<pkg>' works offline — no network needed
         • 'nix-collect-garbage' is safe — GC roots protect container tools
-    ''
-    else if cfg.mode == "ci" || cfg.mode == "pipeline" then ''
-      CI / PIPELINE CONTAINER
-      ───────────────────────
-      This is a headless container for running automated pipelines.
-
-      Running the pipeline:
-        • /bin/pipeline-runner [stage]   — run all stages, or a specific stage
-        • CI_FULL=1 /bin/pipeline-runner — include stages gated on CI_FULL
-        • Pipeline artifacts: ${if cfg.pipeline != null then cfg.pipeline.artifactDir else "/workspace/out"}
-
-      Pipeline stages are defined in the container's Dhall configuration.
-      Stage failure modes: FailFast (abort immediately) or Collect (run all, fail at end).
     ''
     else if cfg.mode == "agent" then ''
       AGENT CONTAINER

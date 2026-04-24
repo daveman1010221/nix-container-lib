@@ -115,28 +115,6 @@ let devContainer
       , staticGid = None Natural
       }
 
-let ciContainer
-    : T.ContainerConfig
-    = { name = "unnamed-ci"
-      , mode = T.Mode.CI
-      , packageLayers =
-        [ T.PackageLayer.Micro
-        , T.PackageLayer.Core
-        , T.PackageLayer.CI
-        ]
-      , shell = None T.Shell
-      , pipeline = None T.PipelineConfig
-      , ssh = None T.SSHConfig
-      , tls = None T.TLSConfig
-      , nix = defaultNix // { enableDaemon = False }
-      , user = defaultUser // { createUser = False }
-      , extraEnv = [] : List T.EnvVar
-      , ai = None T.AiConfig
-      , entrypoint = None Text
-      , staticUid = None Natural
-      , staticGid = None Natural
-      }
-
 let infraAgentContainer
     : T.ContainerConfig
     = { name = "unnamed-infra-agent"
@@ -221,7 +199,6 @@ let minimalContainer
       }
 
 in  { devContainer
-    , ciContainer
     , infraAgentContainer
     , aiAgentContainer
     , minimalContainer

@@ -3,7 +3,7 @@
   entrypoint = null;
   extraEnv = [];
   mode = u:
-    u.CI;
+    u.Dev;
   name = "polar-container-lib-smoke-test";
   nix = {
     buildUserCount = u:
@@ -13,7 +13,7 @@
       u.Auto;
     trustedUsers = [ "root" ];
   };
-  packageLayers = [ (u: u.Micro) (u: u.Core) (u: u.CI) ];
+  packageLayers = [ (u: u.Micro) (u: u.Core) ];
   pipeline = {
     artifactDir = "/workspace/pipeline-out";
     name = "smoke-test-pipeline";

@@ -23,9 +23,9 @@ check-dhall:
     @echo "Type-checking dhall/types.dhall..."
     dhall type < dhall/types.dhall
     @echo "Type-checking dhall/defaults.dhall..."
-    dhall type < dhall/defaults.dhall
+    cd dhall && dhall type < defaults.dhall
     @echo "Type-checking dhall/prelude.dhall..."
-    dhall type < dhall/prelude.dhall
+    cd dhall && dhall type < prelude.dhall
     @echo "Type-checking smoke-test.dhall..."
     dhall type < smoke-test.dhall
     @echo "All Dhall files type-check OK."

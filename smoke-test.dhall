@@ -4,21 +4,17 @@
 -- in isolation without needing the rest of the source tree.
 --
 -- Validates that the ContainerConfig type is well-formed and that a
--- representative CI container config type-checks correctly.
--- CI mode requires pipeline to be set — this uses a minimal stub pipeline.
+-- representative container config type-checks correctly.
 
 { name = "polar-container-lib-smoke-test"
-, mode = < Dev | CI | InfraAgent | AIAgent | Minimal >.CI
+, mode = < Dev | InfraAgent | AIAgent | Minimal >.Dev
 , packageLayers =
-    [ < Micro | Core | CI | InteractiveDev | RustToolchain | PythonToolchain | NodeToolchain | Infrastructure
+    [ < Micro | Core | InteractiveDev | RustToolchain | PythonToolchain | NodeToolchain | Infrastructure
       | Custom : { name : Text, packages : List { attrPath : Text, flakeInput : Optional Text } }
       >.Micro
-    , < Micro | Core | CI | InteractiveDev | RustToolchain | PythonToolchain | NodeToolchain | Infrastructure
+    , < Micro | Core | InteractiveDev | RustToolchain | PythonToolchain | NodeToolchain | Infrastructure
       | Custom : { name : Text, packages : List { attrPath : Text, flakeInput : Optional Text } }
       >.Core
-    , < Micro | Core | CI | InteractiveDev | RustToolchain | PythonToolchain | NodeToolchain | Infrastructure
-      | Custom : { name : Text, packages : List { attrPath : Text, flakeInput : Optional Text } }
-      >.CI
     ]
 , shell =
     None

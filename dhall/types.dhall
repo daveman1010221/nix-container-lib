@@ -7,7 +7,7 @@
 -- ---------------------------------------------------------------------------
 -- Mode
 -- ---------------------------------------------------------------------------
-let Mode = < Dev | CI | InfraAgent | AIAgent | Minimal >
+let Mode = < Dev | InfraAgent | AIAgent | Minimal >
 
 let FailureMode = < FailFast | Collect >
 
