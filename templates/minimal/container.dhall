@@ -23,7 +23,7 @@
 --   - Keep packageLayers short — every package is attack surface
 --   - Inject runtime secrets via env vars, never bake them in
 
-let Lib = https://raw.githubusercontent.com/daveman1010221/nix-container-lib/765bb92d04dc0410d389f1f1808026d5d9eb108a/dhall/prelude.dhall
+let Lib = https://raw.githubusercontent.com/daveman1010221/nix-container-lib/69f6ae569f8357812bad679d2d095d8f96e4946a/dhall/prelude.dhall
         sha256:f75818ad203cb90a5e5921b75cd60bcb66ac5753cf7eba976538bf71e855378c
 let defaults = Lib.defaults
 
