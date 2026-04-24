@@ -58,6 +58,7 @@ let
     }
 
     def file-append [path: string, content: string] {
+        if not ($path | path exists) { "" | save --force $path }
         $content | save --append $path
     }
 
@@ -120,6 +121,9 @@ let
         $env.FISH_GRC     = "${pkgs.fishPlugins.grc}"
       '' + lib.optionalString cfg.hasToolchain ''
         $env.LIBCLANG_PATH = "${pkgs.llvmPackages_19.libclang.lib}/lib"
+        $env.COLUMNS = (
+            if ($env.COLUMNS? | default 0 | into int) > 0 { $env.COLUMNS | into int } else { 80 }
+        )
       '';
       userExports = lib.concatMapStrings
         (ev: "$env.${ev.name} = ${lib.escapeShellArg ev.value}\n")
@@ -221,7 +225,7 @@ let
   # Phase 4: AI setup
   # ---------------------------------------------------------------------------
   phaseAiSetup =
-    if cfg.ai.enable or false
+    if cfg.ai != null && cfg.ai.enable
     then ''
       ##############################################################################
       # AI tooling setup
@@ -268,7 +272,7 @@ let
           | if $in.exit_code == 0 { $in.stdout | str trim } else { "" }
       )
       if not ($sudo_real | is-empty) {
-          cp $sudo_real /usr/bin/sudo
+          cp --preserve [] $sudo_real /usr/bin/sudo
           ^chown root:root /usr/bin/sudo
           ^chmod 4755 /usr/bin/sudo
           if not ("/etc/sudoers" | path exists) {
@@ -365,6 +369,12 @@ let
             }
             ls $tmp | get name | each { |f| cp --preserve [] $f /nix/var/nix/db/; null }
             rm -rf $tmp
+            ^chmod 644 /nix/var/nix/db/db.sqlite
+            ^chmod 644 /nix/var/nix/db/db.sqlite-shm
+            ^chmod 644 /nix/var/nix/db/db.sqlite-wal
+            ^chmod 644 /nix/var/nix/db/schema
+            ^chmod 600 /nix/var/nix/db/big-lock
+            ^chmod 600 /nix/var/nix/db/reserved
         }
 
         ##############################################################################
@@ -567,6 +577,20 @@ let
         warn "vigild did not start within 2s — background services will not be supervised"
         warn "Container will still function — dropping to shell"
     }
+
+    ^chmod 666 /run/vigil/vigild.sock
+
+    ${lib.optionalString cfg.nix.enableDaemon ''
+    let nix_daemon_ready = (
+        1..30 | each { |_|
+            sleep 200ms
+            "/nix/var/nix/daemon-socket/socket" | path exists
+        } | any { |x| $x }
+    )
+    if not $nix_daemon_ready {
+        warn "nix-daemon did not start within 6s — nix commands may fail initially"
+    }
+    ''}
 
     if $dev_user.user != "root" {
         $env.HOME    = $"/home/($dev_user.user)"

@@ -3,11 +3,11 @@ let hasBin = name: builtins.pathExists "${devEnv}/bin/${name}";
 in if !hasBin "cowsay" then null
    else pkgs.writeText "lol.fish" ''
      function lol --description="lolcat (dotacat) inside cowsay"
-         set cows (ls ${pkgs.cowsay}/share/cowsay/cows)
+         set cows (ls ${pkgs.cowsay}/share/cowsay/cows/*.cow)
          set total_cows (count $cows)
          set random_cow (random 1 $total_cows)
-         set my_cow (string replace -r '\.cow$' '''''' -- (path basename $cows[$random_cow]))
-         set output (printf "%s\n" $argv | cowsay -n -f $my_cow -W 79)
+         set my_cow (string replace -r '\.cow$' '''' -- (path basename $cows[$random_cow]))
+         set output (printf "%s\n" $argv | cowsay -n -f $my_cow)
          if type -q dotacat
              echo $output | dotacat
          else
