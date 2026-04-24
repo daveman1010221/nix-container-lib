@@ -7,7 +7,10 @@ in pkgs.writeText "fish_greeting.fish" ''
 
       set container_name (string trim -- "$CONTAINER_NAME")
       if test -z "$container_name"
-          set container_name (hostname)
+          set container_name (string trim (cat /etc/hostname 2>/dev/null))
+      end
+      if test -z "$container_name"
+          set container_name "container"
       end
 
       if type -q dotacat
@@ -48,3 +51,4 @@ in pkgs.writeText "fish_greeting.fish" ''
       end
   end
 ''
+

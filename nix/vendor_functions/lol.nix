@@ -6,7 +6,7 @@ in if !hasBin "cowsay" then null
          set cows (ls ${pkgs.cowsay}/share/cowsay/cows)
          set total_cows (count $cows)
          set random_cow (random 1 $total_cows)
-         set my_cow (echo -n $cows[$random_cow] | cut -d '.' -f 1)
+         set my_cow (string replace -r '\.cow$' '''''' -- (path basename $cows[$random_cow]))
          set output (printf "%s\n" $argv | cowsay -n -f $my_cow -W 79)
          if type -q dotacat
              echo $output | dotacat
