@@ -36,10 +36,10 @@
 # ---------------
 # The pipeline manifest follows the "derivation-style" pattern:
 #   - Top-level `inputs` with `pin: null` slots (filled at runtime by the runner)
-#   - Stages reference inputs by name via { ref: "source" }
-#   - Each stage declares `pure: true|false`
-#   - Cross-stage artifact references via { type: "stage-output", stage, artifact }
-#   - Reproducibility metadata auto-collected from stage purity flags
+#   - Tasks reference inputs by name via { ref: "source" }
+#   - Each task declares `pure: true|false`
+#   - Cross-task artifact references via { type: "task-output", task, artifact }
+#   - Reproducibility metadata auto-collected from task purity flags
 
 { pkgs
 , cfg
@@ -88,13 +88,13 @@ let
   # Pipeline manifest (derivation-style JSON)
   # ---------------------------------------------------------------------------
 
-  mapStageInput = i:
+  mapTaskInput = i:
     if i.type == "workspace"    then { ref = "source"; }
     else if i.type == "lockfile"  then { ref = "lockfile"; }
     else if i.type == "toolchain" then { ref = "toolchain"; }
     else if i.type == "artifact"  then
-      if i ? stage
-      then { type = "stage-output"; stage = i.stage; artifact = i.name; }
+      if i ? task
+      then { type = "task-output"; task = i.task; artifact = i.name; }
       else { ref = i.name; }
     else if i.type == "environment" then {
       type = "environment";
@@ -103,7 +103,7 @@ let
     }
     else { ref = i.type; };
 
-  mapStageOutput = o:
+  mapTaskOutput = o:
     if o.type == "artifact" then
       { type = "artifact"; name = o.name; }
       // (lib.optionalAttrs (o ? content_type) { content_type = o.content_type; })
@@ -143,24 +143,24 @@ let
       };
     };
 
-    stages = map (stage:
+    tasks = map (task:
       {
-        inherit (stage) name command failureMode condition;
-        pure    = stage.pure or true;
-        inputs  = map mapStageInput stage.inputs;
-        outputs = map mapStageOutput stage.outputs;
+        inherit (task) name command failureMode condition;
+        pure    = task.pure or true;
+        inputs  = map mapTaskInput task.inputs;
+        outputs = map mapTaskOutput task.outputs;
       }
-      // (lib.optionalAttrs (stage ? impurity_reason) {
-        impurity_reason = stage.impurity_reason;
+      // (lib.optionalAttrs (task ? impurity_reason) {
+        impurity_reason = task.impurity_reason;
       })
-    ) pipeline.stages;
+    ) pipeline.tasks;
 
     # Pipeline-level output declarations (if specified in Dhall config).
     outputs = lib.optionalAttrs (pipeline ? outputs) pipeline.outputs;
 
     reproducibility = {
       strategy = "content-addressed-inputs";
-      known_impurities = lib.pipe pipeline.stages [
+      known_impurities = lib.pipe pipeline.tasks [
         (builtins.filter (s: !(s.pure or true)))
         (map (s: "${s.name}: ${s.impurity_reason or "unspecified"}"))
       ];
@@ -207,12 +207,46 @@ let
     executable  = true;
   };
 
+  examplePipelineSource =
+    let path = ./scripts/example-build-pipeline.nu;
+    in if builtins.pathExists path
+       then builtins.readFile path
+       else ''
+         #!/usr/bin/env nu
+         print "[example-build-pipeline] ERROR: script not found at build time"
+         exit 1
+       '';
+
+  examplePipeline = pkgs.writeTextFile {
+    name        = "example-build-pipeline.nu";
+    destination = "/etc/pipeline/example-build-pipeline.nu";
+    text        = examplePipelineSource;
+    executable  = true;
+  };
+
+  coreSource =
+    let path = ./scripts/core.nu;
+    in if builtins.pathExists path
+       then builtins.readFile path
+       else ''
+         #!/usr/bin/env nu
+         print "[core] ERROR: core.nu not found at build time"
+         exit 1
+       '';
+
+  pipelineCore = pkgs.writeTextFile {
+    name        = "core.nu";
+    destination = "/etc/pipeline/core.nu";
+    text        = coreSource;
+    executable  = true;
+  };
+
   # ---------------------------------------------------------------------------
   # Attested build helper (nushell — imported from source tree)
   #
   # Wraps `cargo build` with provenance event emission so the pipeline runner
   # can track inputs, outputs, and timing through the Cassini event stream.
-  # Stages invoke it as: cargo-attested-build --package my-crate --release
+  # Tasks invoke it as: cargo-attested-build --package my-crate --release
   #
   # Same bootstrapping pattern as pipelineRunner: load from the .nu file in
   # the source tree, fall back to a stub if it doesn't exist yet.
@@ -242,7 +276,7 @@ let
   #
   # Thin shell script at /bin/pipeline-runner that execs nushell with the
   # runner. The orchestrator's k8s Job can specify command args that pass
-  # through (manifest path, target stage).
+  # through (manifest path, target task).
   # ---------------------------------------------------------------------------
 
   # Find nushell in cfg.packages. If it's not there (shouldn't happen for
@@ -263,4 +297,4 @@ let
   '';
 
 in
-  [ pipelineManifest toolchainManifest pipelineRunner attestedBuild entrypoint ]
+  [ pipelineManifest toolchainManifest pipelineRunner attestedBuild entrypoint examplePipeline pipelineCore ]

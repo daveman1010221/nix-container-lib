@@ -29,28 +29,28 @@ let PackageLayer =
       | Custom : { name : Text, packages : List PackageRef }
       >
 
-let StageInput =
+let TaskInput =
       < Workspace
       | Lockfile
       | Toolchain
       | Artifact : Text
-      | StageOutput : { stage : Text, artifact : Text }
+      | TaskOutput : { task : Text, artifact : Text }
       | Environment : { name : Text, description : Text }
       >
 
-let StageOutput =
+let TaskOutput =
       < Artifact : { name : Text, content_type : Optional Text }
       | Assertion : { name : Text, description : Optional Text }
       | Report : { name : Optional Text }
       | None
       >
 
-let Stage =
+let Task =
       { name : Text
       , command : Text
       , failureMode : FailureMode
-      , inputs : List StageInput
-      , outputs : List StageOutput
+      , inputs : List TaskInput
+      , outputs : List TaskOutput
       , condition : Optional Text
       , pure : Bool
       , impurityReason : Optional Text
@@ -58,13 +58,13 @@ let Stage =
 
 let PipelineOutputArtifact =
       { name : Text
-      , fromStage : Text
+      , fromTask : Text
       , artifact : Text
       , attestation : Optional Text
       , verifyMethod : Optional Text
       }
 
-let PipelineOutputAssertion = { name : Text, fromStage : Text }
+let PipelineOutputAssertion = { name : Text, fromTask : Text }
 
 let PipelineOutputs =
       { artifacts : List PipelineOutputArtifact
@@ -73,7 +73,7 @@ let PipelineOutputs =
 
 let PipelineConfig =
       { name : Text
-      , stages : List Stage
+      , tasks : List Task
       , artifactDir : Text
       , workingDir : Text
       , outputs : Optional PipelineOutputs
@@ -167,9 +167,9 @@ in  { Mode
     , EnvVar
     , PackageRef
     , PackageLayer
-    , StageInput
-    , StageOutput
-    , Stage
+    , TaskInput
+    , TaskOutput
+    , Task
     , PipelineOutputArtifact
     , PipelineOutputAssertion
     , PipelineOutputs

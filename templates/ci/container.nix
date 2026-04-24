@@ -22,19 +22,19 @@
         {
           artifact = "bin";
           attestation = "build-manifest.json";
-          fromStage = "build";
+          fromTask = "build";
           name = "binaries";
           verifyMethod = "Recompute binding hash from input pins + binary hash";
         }
       ];
       assertions = [
-        { fromStage = "fmt"; name = "formatted"; }
-        { fromStage = "lint"; name = "lint-clean"; }
-        { fromStage = "test-unit"; name = "tests-pass"; }
-        { fromStage = "audit"; name = "audit-clean"; }
+        { fromTask = "fmt"; name = "formatted"; }
+        { fromTask = "lint"; name = "lint-clean"; }
+        { fromTask = "test-unit"; name = "tests-pass"; }
+        { fromTask = "audit"; name = "audit-clean"; }
       ];
     };
-    stages = [
+    tasks = [
       {
         command = "cargo fmt --check";
         condition = null;

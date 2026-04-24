@@ -30,12 +30,12 @@
     , artifactDir = "/workspace/pipeline-out"
     , workingDir  = "/workspace"
     , outputs     = None
-        { artifacts  : List { name : Text, fromStage : Text, artifact : Text, attestation : Optional Text, verifyMethod : Optional Text }
-        , assertions : List { name : Text, fromStage : Text }
+        { artifacts  : List { name : Text, fromTask : Text, artifact : Text, attestation : Optional Text, verifyMethod : Optional Text }
+        , assertions : List { name : Text, fromTask : Text }
         }
-    , stages =
-        [ { name           = "check"
-          , command        = "echo smoke-test-ok"
+    , tasks =
+        [ { name           = "build"
+          , command        = "nu /etc/pipeline/example-build-pipeline.nu"
           , failureMode    = < FailFast | Collect >.Collect
           , condition      = None Text
           , pure           = True
@@ -45,7 +45,7 @@
                 | Lockfile
                 | Toolchain
                 | Artifact : Text
-                | StageOutput : { stage : Text, artifact : Text }
+                | TaskOutput : { task : Text, artifact : Text }
                 | Environment : { name : Text, description : Text }
                 >.Workspace
               ]

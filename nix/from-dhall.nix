@@ -211,15 +211,15 @@ let
     Collect  = "collect";
   };
 
-  resolveStageInput = si: si {
+  resolveTaskInput = si: si {
     Workspace   = { type = "workspace"; };
     Lockfile    = { type = "lockfile"; };
     Toolchain   = { type = "toolchain"; };
     Artifact    = name: { type = "artifact"; inherit name; };
-    StageOutput = payload: {
+    TaskOutput = payload: {
       type  = "artifact";
       name  = payload.artifact;
-      stage = payload.stage;
+      task = payload.task;
     };
     Environment = payload: {
       type        = "environment";
@@ -228,7 +228,7 @@ let
     };
   };
 
-  resolveStageOutput = so: so {
+  resolveTaskOutput = so: so {
     Artifact  = payload: { type = "artifact"; name = payload.name; }
       // (lib.optionalAttrs (payload.content_type != null) { content_type = payload.content_type; });
     Assertion = payload: { type = "assertion"; name = payload.name; }
@@ -238,22 +238,22 @@ let
     None      = { type = "none"; };
   };
 
-  resolveStage = stage: {
-    name           = stage.name;
-    command        = stage.command;
-    failureMode    = resolveFailureMode stage.failureMode;
-    condition      = stage.condition;
-    pure           = stage.pure;
-    impurityReason = stage.impurityReason;
-    inputs         = map resolveStageInput stage.inputs;
-    outputs        = map resolveStageOutput stage.outputs;
+  resolveTask = task: {
+    name           = task.name;
+    command        = task.command;
+    failureMode    = resolveFailureMode task.failureMode;
+    condition      = task.condition;
+    pure           = task.pure;
+    impurityReason = task.impurityReason;
+    inputs         = map resolveTaskInput task.inputs;
+    outputs        = map resolveTaskOutput task.outputs;
   };
 
   resolvePipelineOutputs = outputs:
     if outputs == null then null
     else {
-      artifacts  = map (a: { name = a.name; fromStage = a.fromStage; artifact = a.artifact; attestation = a.attestation; verifyMethod = a.verifyMethod; }) outputs.artifacts;
-      assertions = map (a: { name = a.name; fromStage = a.fromStage; }) outputs.assertions;
+      artifacts  = map (a: { name = a.name; fromTask = a.fromTask; artifact = a.artifact; attestation = a.attestation; verifyMethod = a.verifyMethod; }) outputs.artifacts;
+      assertions = map (a: { name = a.name; fromTask = a.fromTask; }) outputs.assertions;
     };
 
   resolvedPipeline =
@@ -262,7 +262,7 @@ let
       name        = cfg.pipeline.name;
       artifactDir = cfg.pipeline.artifactDir;
       workingDir  = cfg.pipeline.workingDir or "/workspace";
-      stages      = map resolveStage cfg.pipeline.stages;
+      tasks      = map resolveTask cfg.pipeline.tasks;
       outputs     = resolvePipelineOutputs (cfg.pipeline.outputs or null);
     };
 

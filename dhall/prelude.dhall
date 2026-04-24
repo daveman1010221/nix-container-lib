@@ -46,9 +46,9 @@ in
   , MinimalShellConfig     = T.MinimalShellConfig
   , InteractiveShellConfig = T.InteractiveShellConfig
 
-  , StageInput      = T.StageInput
-  , StageOutput     = T.StageOutput
-  , Stage           = T.Stage
+  , TaskInput      = T.TaskInput
+  , TaskOutput     = T.TaskOutput
+  , Task           = T.Task
   , PipelineConfig  = T.PipelineConfig
   , SSHConfig       = T.SSHConfig
   , TLSConfig       = T.TLSConfig
@@ -102,23 +102,23 @@ in
            }
 
   -- ---------------------------------------------------------------------------
-  -- Stage constructors (unchanged)
+  -- Task constructors (unchanged)
   -- ---------------------------------------------------------------------------
-  , simpleStage =
+  , simpleTask =
       \(name : Text)
       -> \(command : Text)
       -> \(failureMode : T.FailureMode)
       ->  { name           = name
           , command        = command
           , failureMode    = failureMode
-          , inputs         = [ T.StageInput.Workspace ]
-          , outputs        = [ T.StageOutput.None ]
+          , inputs         = [ T.TaskInput.Workspace ]
+          , outputs        = [ T.TaskOutput.None ]
           , pure           = True
           , impurityReason = None Text
           , condition      = None Text
-          } : T.Stage
+          } : T.Task
 
-  , conditionalStage =
+  , conditionalTask =
       \(name : Text)
       -> \(command : Text)
       -> \(failureMode : T.FailureMode)
@@ -126,12 +126,12 @@ in
       ->  { name           = name
           , command        = command
           , failureMode    = failureMode
-          , inputs         = [ T.StageInput.Workspace ]
-          , outputs        = [ T.StageOutput.None ]
+          , inputs         = [ T.TaskInput.Workspace ]
+          , outputs        = [ T.TaskOutput.None ]
           , pure           = False
           , impurityReason = Some "Cannot guarantee environment variable is set"
           , condition      = Some condition
-          } : T.Stage
+          } : T.Task
 
   -- ---------------------------------------------------------------------------
   -- EnvVar constructors (unchanged)

@@ -6,19 +6,19 @@
 -- binaries with attested provenance, and optionally pushes OCI images.
 -- The derivation-style manifest pins all inputs at runtime so the build
 -- is reproducible: same container image + same source = same outputs
--- for all pure stages.
+-- for all pure tasks.
 --
 -- The Toolchain layer is included because this pipeline compiles Rust.
 -- If your pipeline only runs pre-built tools (linting configs, SBOM
--- scanners), drop Toolchain and the build/push stages.
+-- scanners), drop Toolchain and the build/push tasks.
 
 let Lib = https://raw.githubusercontent.com/daveman1010221/nix-container-lib/49af3817a5197ab7bd95ce1b46c487af1dce424d/dhall/prelude.dhall
         sha256:f75818ad203cb90a5e5921b75cd60bcb66ac5753cf7eba976538bf71e855378c
 let defaults = Lib.defaults
 
 let FailureMode = Lib.FailureMode
-let Input       = Lib.StageInput
-let Output      = Lib.StageOutput
+let Input       = Lib.TaskInput
+let Output      = Lib.TaskOutput
 
 let artifactDir = "/workspace/pipeline-out"
 
@@ -37,20 +37,20 @@ in defaults.ciContainer //
       , outputs     = Some
           { artifacts =
               [ { name         = "binaries"
-                , fromStage    = "build"
+                , fromTask    = "build"
                 , artifact     = "bin"
                 , attestation  = Some "build-manifest.json"
                 , verifyMethod = Some "Recompute binding hash from input pins + binary hash"
                 }
               ]
           , assertions =
-              [ { name = "formatted",  fromStage = "fmt" }
-              , { name = "lint-clean", fromStage = "lint" }
-              , { name = "tests-pass", fromStage = "test-unit" }
-              , { name = "audit-clean", fromStage = "audit" }
+              [ { name = "formatted",  fromTask = "fmt" }
+              , { name = "lint-clean", fromTask = "lint" }
+              , { name = "tests-pass", fromTask = "test-unit" }
+              , { name = "audit-clean", fromTask = "audit" }
               ]
           }
-      , stages =
+      , tasks =
           [ { name           = "fmt"
             , command        = "cargo fmt --check"
             , failureMode    = FailureMode.Collect

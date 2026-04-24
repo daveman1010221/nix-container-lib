@@ -3,13 +3,13 @@
 # pipeline_runner.nu
 #
 # Derivation-style pipeline runner. Reads a pipeline manifest, pins all
-# declared inputs (source tree, lockfile, toolchain), executes stages,
-# resolves cross-stage artifact references, emits provenance events,
+# declared inputs (source tree, lockfile, toolchain), executes tasks,
+# resolves cross-task artifact references, emits provenance events,
 # and writes the fully-pinned manifest to the artifact directory.
 #
 # The pinned manifest is the build derivation: given the same input pins,
 # re-running the pipeline in the same container produces the same outputs
-# for all pure stages.
+# for all pure tasks.
 #
 
 # Dependencies (baked into container by Nix / container.dhall):
@@ -253,19 +253,19 @@ def emit-source-identified [
 }
 
 # ---------------------------------------------------------------------------
-# Input resolution (per-stage)
+# Input resolution (per-task)
 # ---------------------------------------------------------------------------
 
-# Resolve a stage's input descriptor against the pinned top-level inputs,
-# the artifact directory, and prior stage outputs. Emits provenance events.
+# Resolve a task's input descriptor against the pinned top-level inputs,
+# the artifact directory, and prior task outputs. Emits provenance events.
 # Returns a record with the resolved artifact_id.
-def resolve-stage-input [
+def resolve-task-input [
     exec_id: string
     input_desc: record
     pinned_inputs: record
     working_dir: string
     artifact_dir: string
-    stage_outputs: record   # { stage_name: { artifact_name: { hash, path } } }
+    task_outputs: record   # { task_name: { artifact_name: { hash, path } } }
 ]: nothing -> record {
     if ($input_desc.ref? | default "") != "" {
         # This is a reference to a top-level pinned input.
@@ -301,25 +301,25 @@ def resolve-stage-input [
 
         { artifact_id: $pin, type: "ref", ref: $ref_name }
 
-    } else if ($input_desc.type? | default "") == "stage-output" {
-        # Reference to a prior stage's output artifact.
-        let src_stage = $input_desc.stage
+    } else if ($input_desc.type? | default "") == "task-output" {
+        # Reference to a prior task's output artifact.
+        let src_task = $input_desc.task
         let src_artifact = $input_desc.artifact
-        let stage_data = ($stage_outputs | get -o $src_stage)
+        let task_data = ($task_outputs | get -o $src_task)
 
-        if $stage_data == null {
-            log-warn $"stage-output ref: stage '($src_stage)' has no recorded outputs" --component "resolve"
-            return { artifact_id: "", type: "stage-output", stage: $src_stage, artifact: $src_artifact }
+        if $task_data == null {
+            log-warn $"task-output ref: task '($src_task)' has no recorded outputs" --component "resolve"
+            return { artifact_id: "", type: "task-output", task: $src_task, artifact: $src_artifact }
         }
 
-        let artifact_data = ($stage_data | get -o $src_artifact)
+        let artifact_data = ($task_data | get -o $src_artifact)
         if $artifact_data == null {
-            log-warn $"stage-output ref: artifact '($src_artifact)' not found in stage '($src_stage)'" --component "resolve"
-            return { artifact_id: "", type: "stage-output", stage: $src_stage, artifact: $src_artifact }
+            log-warn $"task-output ref: artifact '($src_artifact)' not found in task '($src_task)'" --component "resolve"
+            return { artifact_id: "", type: "task-output", task: $src_task, artifact: $src_artifact }
         }
 
-        emit-dependency-resolved $exec_id $artifact_data.hash --name $src_artifact --role "stage-output"
-        { artifact_id: $artifact_data.hash, type: "stage-output", stage: $src_stage, artifact: $src_artifact }
+        emit-dependency-resolved $exec_id $artifact_data.hash --name $src_artifact --role "task-output"
+        { artifact_id: $artifact_data.hash, type: "task-output", task: $src_task, artifact: $src_artifact }
 
     } else if ($input_desc.type? | default "") == "environment" {
         # Environment inputs are not content-addressable. Logged but not hashed.
@@ -333,12 +333,12 @@ def resolve-stage-input [
 }
 
 # ---------------------------------------------------------------------------
-# Output resolution (per-stage)
+# Output resolution (per-task)
 # ---------------------------------------------------------------------------
 
-# Resolve a stage's output descriptor. Hashes produced artifacts, emits
+# Resolve a task's output descriptor. Hashes produced artifacts, emits
 # provenance events. Returns a record with the artifact_id and path.
-def resolve-stage-output [
+def resolve-task-output [
     exec_id: string
     output_desc: record
     artifact_dir: string
@@ -360,7 +360,7 @@ def resolve-stage-output [
         }
         "assertion" => {
             # Assertions are pass/fail gates. No artifact to hash.
-            # The stage exit code is the assertion result.
+            # The task exit code is the assertion result.
             { artifact_id: "", type: "assertion", name: ($output_desc.name? | default "") }
         }
         "report" => {
@@ -377,29 +377,29 @@ def resolve-stage-output [
 }
 
 # ---------------------------------------------------------------------------
-# Stage execution
+# Task execution
 # ---------------------------------------------------------------------------
 
-def execute-stage [
-    stage: record
-    stage_index: int
+def execute-task [
+    task: record
+    task_index: int
     pipeline_exec_id: string
     working_dir: string
     artifact_dir: string
     prior_exit: int
     pinned_inputs: record
-    stage_outputs: record
+    task_outputs: record
 ]: nothing -> record {
-    let stage_name = $stage.name
-    let stage_command = $stage.command
-    let failure_mode = ($stage.failureMode? | default "fail")
-    let condition = ($stage.condition? | default "always")
-    let is_pure = ($stage.pure? | default false)
+    let task_name = $task.name
+    let task_command = $task.command
+    let failure_mode = ($task.failureMode? | default "fail")
+    let condition = ($task.condition? | default "always")
+    let is_pure = ($task.pure? | default false)
 
-    log-info $"=== Stage ($stage_index): ($stage_name) ===" --component "stage"
+    log-info $"=== Task ($task_index): ($task_name) ===" --component "task"
     if not $is_pure {
-        let reason = ($stage.impurity_reason? | default "unspecified")
-        log-debug $"impure stage: ($reason)" --component "stage"
+        let reason = ($task.impurity_reason? | default "unspecified")
+        log-debug $"impure task: ($reason)" --component "task"
     }
 
     # Condition gate.
@@ -414,53 +414,55 @@ def execute-stage [
 
     if $should_skip {
         let reason = if $condition == "previous_success" {
-            "prior stage failed"
+            "prior task failed"
         } else {
             $"condition env var '($condition)' not set"
         }
-        log-info $"skipping '($stage_name)' — ($reason)" --component "stage"
+        log-info $"skipping '($task_name)' — ($reason)" --component "task"
         return {
             exit_code: $prior_exit
             skipped: true
-            stage_name: $stage_name
+            task_name: $task_name
             produced: {}
             pure: $is_pure
         }
     }
 
-    let stage_exec_id = (random uuid)
-    emit-build-observed $stage_exec_id $pipeline_exec_id $stage_command $working_dir
+    let task_exec_id = (random uuid)
+    emit-build-observed $task_exec_id $pipeline_exec_id $task_command $working_dir
 
     # Resolve inputs.
-    let consumed = ($stage.inputs | each {|input|
-        resolve-stage-input $stage_exec_id $input $pinned_inputs $working_dir $artifact_dir $stage_outputs
+    let consumed = ($task.inputs | each {|input|
+        resolve-task-input $task_exec_id $input $pinned_inputs $working_dir $artifact_dir $task_outputs
     })
 
     # Execute.
-    let stage_log = ($artifact_dir | path join $"($stage_name).log")
+    let task_log = ($artifact_dir | path join $"($task_name).log")
     let start_time = (date now)
 
-    #Execute stage command
+    #Execute task command
     let result = try {
         cd $working_dir
-        bash -c $"($stage_command) 2>&1 | tee ($stage_log)" | complete
+        let out = (nu -c $task_command | complete)
+        $out.stdout | save -f $task_log
+        $out
     } catch {|e|
-        $"Execution error: ($e.msg)\n" | save -f $stage_log
+        $"Execution error: ($e.msg)\n" | save -f $task_log
         { exit_code: 1, stdout: "", stderr: $"Execution error: ($e.msg)" }
     }
 
-        let d = (((date now) - $start_time) / 1_000_000)
-        let duration_ms = ($d | into int)
-    let stage_exit = $result.exit_code
+    let d = (((date now) - $start_time) / 1_000_000)
+    let duration_ms = ($d | into int)
+    let task_exit = $result.exit_code
 
-    $"($stage_exit)" | save -f ($artifact_dir | path join $"($stage_name).exit")
-    log-info $"stage '($stage_name)' exited ($stage_exit) (($duration_ms)ms)" --component "stage"
+    $"($task_exit)" | save -f ($artifact_dir | path join $"($task_name).exit")
+    log-info $"task '($task_name)' exited ($task_exit) (($duration_ms)ms)" --component "task"
 
     # Resolve outputs — only on success.
     mut produced = {}
-    if $stage_exit == 0 {
-        for output in $stage.outputs {
-            let resolved = (resolve-stage-output $stage_exec_id $output $artifact_dir)
+    if $task_exit == 0 {
+        for output in $task.outputs {
+            let resolved = (resolve-task-output $task_exec_id $output $artifact_dir)
             if $resolved.artifact_id != "" {
                 let name = ($resolved.name? | default "")
                 if $name != "" {
@@ -470,32 +472,32 @@ def execute-stage [
         }
     }
 
-    emit-build-completed $stage_exec_id $stage_exit $duration_ms
+    emit-build-completed $task_exec_id $task_exit $duration_ms
 
     # Failure mode.
     let effective_exit = match $failure_mode {
-        "fail-fast" => $stage_exit
-        "fail" => $stage_exit
+        "fail-fast" => $task_exit
+        "fail" => $task_exit
         "collect" => {
-            if $stage_exit != 0 {
-                log-warn $"stage '($stage_name)' failed — continuing failureMode=collect" --component "stage"
+            if $task_exit != 0 {
+                log-warn $"task '($task_name)' failed — continuing failureMode=collect" --component "task"
             }
             0
         }
         "warn" => {
-            if $stage_exit != 0 {
-                log-warn $"stage '($stage_name)' failed — continuing failureMode=warn" --component "stage"
+            if $task_exit != 0 {
+                log-warn $"task '($task_name)' failed — continuing failureMode=warn" --component "task"
             }
             0
         }
         "ignore" => 0
-        _ => $stage_exit
+        _ => $task_exit
     }
 
     {
         exit_code: $effective_exit
         skipped: false
-        stage_name: $stage_name
+        task_name: $task_name
         produced: $produced
         pure: $is_pure
     }
@@ -508,11 +510,11 @@ def execute-stage [
 # Usage:
 #   nu pipeline_runner.nu                              # defaults
 #   nu pipeline_runner.nu ./manifest.json              # custom manifest
-#   nu pipeline_runner.nu ./manifest.json test-unit    # single stage
-def main [manifest_path?: string, target_stage?: string] {
+#   nu pipeline_runner.nu ./manifest.json test-unit    # single task
+def main [manifest_path?: string, target_task?: string] {
     let manifest_file = ($manifest_path
         | default ($env.PIPELINE_MANIFEST? | default $MANIFEST_PATH))
-    let target = ($target_stage
+    let target = ($target_task
         | default ($env.PIPELINE_TARGET? | default "all"))
 
     let manifest = (open $manifest_file)
@@ -531,14 +533,14 @@ def main [manifest_path?: string, target_stage?: string] {
         $fallback
     }
 
-    let stages = $manifest.stages
+    let tasks = $manifest.tasks
 
     mkdir $artifact_dir
 
     log-info $"starting pipeline '($pipeline_name)' build_id: ($env.POLAR_BUILD_ID? | default 'local')"
     log-info $"manifest: ($manifest_file)"
     log-info $"target:   ($target)"
-    log-info $"stages:   ($stages | length)"
+    log-info $"tasks:   ($tasks | length)"
 
     # ── Pin inputs ──────────────────────────────────────────────────────────
     # Compute content hashes for all declared inputs. This is the derivation
@@ -556,28 +558,28 @@ def main [manifest_path?: string, target_stage?: string] {
     let pipeline_start = (date now)
     emit-build-observed $pipeline_exec_id "" $"pipeline:($pipeline_name)" $working_dir
 
-    # ── Filter stages ───────────────────────────────────────────────────────
-    let active_stages = if $target == "all" {
-        $stages
+    # ── Filter tasks ───────────────────────────────────────────────────────
+    let active_tasks = if $target == "all" {
+        $tasks
     } else {
-        let matched = ($stages | where name == $target)
+        let matched = ($tasks | where name == $target)
         if ($matched | is-empty) {
-            log-error $"no stage named '($target)' — available: ($stages | get name | str join ', ')"
+            log-error $"no task named '($target)' — available: ($tasks | get name | str join ', ')"
             exit 1
         }
         $matched
     }
 
-    # ── Stage loop ──────────────────────────────────────────────────────────
-    # Fold over stages, threading exit code and accumulated stage outputs.
-    # stage_outputs is a record keyed by stage name, containing each stage's
-    # produced artifacts — this is how stage-output input refs resolve.
+    # ── Task loop ──────────────────────────────────────────────────────────
+    # Fold over tasks, threading exit code and accumulated task outputs.
+    # task_outputs is a record keyed by task name, containing each task's
+    # produced artifacts — this is how task-output input refs resolve.
     let final_state = try {
-        $active_stages
+        $active_tasks
         | enumerate
-        | reduce --fold { exit_code: 0, results: [], stage_outputs: {} } {|entry, acc|
+        | reduce --fold { exit_code: 0, results: [], task_outputs: {} } {|entry, acc|
             let result = (
-                execute-stage
+                execute-task
                     $entry.item
                     $entry.index
                     $pipeline_exec_id
@@ -585,7 +587,7 @@ def main [manifest_path?: string, target_stage?: string] {
                     $artifact_dir
                     $acc.exit_code
                     $pinned_inputs
-                    $acc.stage_outputs
+                    $acc.task_outputs
             )
 
             let new_exit = if $result.exit_code != 0 and $acc.exit_code == 0 {
@@ -594,22 +596,22 @@ def main [manifest_path?: string, target_stage?: string] {
                 $acc.exit_code
             }
 
-            # Register this stage's produced artifacts for downstream stage-output refs.
+            # Register this task's produced artifacts for downstream task-output refs.
             let updated_outputs = if ($result.produced | columns | length) > 0 {
-                $acc.stage_outputs | merge { ($result.stage_name): $result.produced }
+                $acc.task_outputs | merge { ($result.task_name): $result.produced }
             } else {
-                $acc.stage_outputs
+                $acc.task_outputs
             }
 
             {
                 exit_code: $new_exit
                 results: ($acc.results | append $result)
-                stage_outputs: $updated_outputs
+                task_outputs: $updated_outputs
             }
         }
     } catch {|e|
         log-error $"pipeline loop failed: ($e.msg)"
-        { exit_code: 1, results: [], stage_outputs: {} }
+        { exit_code: 1, results: [], task_outputs: {} }
     }
 
     let d = (((date now) - $pipeline_start) / 1_000_000)
@@ -640,16 +642,16 @@ def main [manifest_path?: string, target_stage?: string] {
         target: $target
         duration_ms: $pipeline_duration_ms
         result: $result_str
-        passed:  ($passed  | get stage_name)
-        failed:  ($failed  | get stage_name)
-        skipped: ($skipped | get stage_name)
-        pure_stages: $pure_count
-        impure_stages: $impure_count
+        passed:  ($passed  | get task_name)
+        failed:  ($failed  | get task_name)
+        skipped: ($skipped | get task_name)
+        pure_tasks: $pure_count
+        impure_tasks: $impure_count
         input_pins: ($pinned_inputs | columns | each {|col|
             let input = ($pinned_inputs | get $col)
             { name: $col, type: $input.type, pin: ($input.pin? | default null) }
         })
-        stage_outputs: $final_state.stage_outputs
+        task_outputs: $final_state.task_outputs
     }
     $summary | to json --indent 2 | save -f ($artifact_dir | path join "summary.json")
 
@@ -661,12 +663,12 @@ def main [manifest_path?: string, target_stage?: string] {
         $"Duration: ($pipeline_duration_ms)ms"
         $"Result:   ($result_str | str upcase)"
         ""
-        $"Passed  \(($passed | length)\):  ($passed | get stage_name | str join ', ' | default 'none')"
-        $"Failed  \(($failed | length)\):  ($failed | get stage_name | str join ', ' | default 'none')"
-        $"Skipped \(($skipped | length)\): ($skipped | get stage_name | str join ', ' | default 'none')"
+        $"Passed  \(($passed | length)\):  ($passed | get task_name | str join ', ' | default 'none')"
+        $"Failed  \(($failed | length)\):  ($failed | get task_name | str join ', ' | default 'none')"
+        $"Skipped \(($skipped | length)\): ($skipped | get task_name | str join ', ' | default 'none')"
         ""
-        $"Pure stages:   ($pure_count)"
-        $"Impure stages: ($impure_count)"
+        $"Pure tasks:   ($pure_count)"
+        $"Impure tasks: ($impure_count)"
         ""
         "Input pins:"
         ...($pinned_inputs | columns | each {|col|

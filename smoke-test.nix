@@ -18,15 +18,15 @@
     artifactDir = "/workspace/pipeline-out";
     name = "smoke-test-pipeline";
     outputs = null;
-    stages = [
+    tasks = [
       {
-        command = "echo smoke-test-ok";
+        command = "nu /etc/pipeline/example-build-pipeline.nu";
         condition = null;
         failureMode = u:
           u.Collect;
         impurityReason = null;
         inputs = [ (u: u.Workspace) ];
-        name = "check";
+        name = "build";
         outputs = [ (u: u.None) ];
         pure = true;
       }
