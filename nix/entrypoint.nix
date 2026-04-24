@@ -590,6 +590,7 @@ let
     if not $nix_daemon_ready {
         warn "nix-daemon did not start within 6s — nix commands may fail initially"
     }
+    ^chmod 666 /nix/var/nix/daemon-socket/socket
     ''}
 
     if $dev_user.user != "root" {
