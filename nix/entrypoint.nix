@@ -507,6 +507,8 @@ let
   ''
   else if cfg.mode == "dev" then ''
     summary: dev container background services
+
+    services:
     ${nixDaemonServiceBlock}
     ${sshServiceBlock}
   ''
@@ -589,8 +591,9 @@ let
     )
     if not $nix_daemon_ready {
         warn "nix-daemon did not start within 6s — nix commands may fail initially"
+    } else {
+        ^chmod 666 /nix/var/nix/daemon-socket/socket
     }
-    ^chmod 666 /nix/var/nix/daemon-socket/socket
     ''}
 
     if $dev_user.user != "root" {
