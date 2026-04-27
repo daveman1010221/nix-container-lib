@@ -507,7 +507,7 @@ DIRENV_HOOK
     # Runs once at interactive startup. Uses lol (cowsay + dotacat) if available.
     # Falls back to a plain print if dotacat isn't present.
     # ---------------------------------------------------------------------------
-    let container_name = ($env.CONTAINER_NAME? | default (^hostname | str trim))
+    let container_name = ($env.CONTAINER_NAME? | default ($env.HOSTNAME? | default (try { open /proc/sys/kernel/hostname | str trim } catch { "unknown" })))
     let greeting_phrases = [
       "Next stop: Bug-free code!"
       "Compiling dreams into reality."
