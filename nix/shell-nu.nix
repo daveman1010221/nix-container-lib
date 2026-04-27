@@ -147,26 +147,6 @@ let
 
     # Atuin history
     ${pkgs.atuin}/bin/atuin init nu > $out/etc/nushell/atuin-init.nu
-
-    # Direnv — direnv hook nu is not supported in all versions;
-    # use the community-standard PWD hook approach instead.
-    cat > $out/etc/nushell/direnv-hook.nu << 'DIRENV_HOOK'
-# direnv integration for nushell (PWD hook approach)
-# Loaded at startup via config.nu.
-$env.config = ($env.config | upsert hooks {|config|
-  let existing_hooks = ($config | get -o hooks | default {})
-  let existing_env_change = ($existing_hooks | get -o env_change | default {})
-  let existing_pwd = ($existing_env_change | get -o PWD | default [])
-  let direnv_hook = {||
-    if (which direnv | is-not-empty) {
-      direnv export json | from json | load-env
-    }
-  }
-  $existing_hooks | upsert env_change (
-    $existing_env_change | upsert PWD ($existing_pwd | append $direnv_hook)
-  )
-})
-DIRENV_HOOK
   '';
 
   # ---------------------------------------------------------------------------
@@ -383,9 +363,19 @@ DIRENV_HOOK
       # Hooks
       # ---------------------------------------------------------------------------
       hooks: {
-        # Auto-cd to /workspace on container entry if not already there
         env_change: {
           PWD: [
+            # 1) direnv – load .envrc on directory change (must be first)
+            { ||
+              if (which direnv | is-not-empty) {
+                direnv export json | from json | load-env
+                # Workaround for PATH being a string in some Nushell versions
+                if 'ENV_CONVERSIONS' in $env and 'PATH' in $env.ENV_CONVERSIONS {
+                  $env.PATH = do $env.ENV_CONVERSIONS.PATH.from_string $env.PATH
+                }
+              }
+            },
+            # 2) Auto-cd to /workspace on first entry
             { ||
               if ($env.PWD != "/workspace") and (("/workspace" | path exists)) and (not ($env | get -o __NCL_WORKSPACE_CD_DONE | default false)) {
                 $env.__NCL_WORKSPACE_CD_DONE = true
@@ -560,7 +550,6 @@ DIRENV_HOOK
     # Tool integrations sourced directly to avoid nested-source scoping issues
     source /etc/nushell/starship-init.nu
     source /etc/nushell/atuin-init.nu
-    source /etc/nushell/direnv-hook.nu
 
     source /etc/nushell/config.nu
 
