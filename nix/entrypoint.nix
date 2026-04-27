@@ -125,7 +125,7 @@ let
         )
       '';
       userExports = lib.concatMapStrings
-        (ev: ''$env.${ev.name} = "${ev.value}"\n'')
+        (ev: "$env.${ev.name} = \"${ev.value}\"\n")
         cfg.startTimeEnv;
     in
       builtinExports + userExports;
