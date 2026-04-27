@@ -9,7 +9,6 @@
 #   2.  Store-path exports
 #   3.  User creation        (cfg.user.createUser)
 #   4.  AI setup             (cfg.ai.enable)
-#   5.  Sudo setup           (cfg.user.supplementalGroups != [])
 #   6.  Arch config          (cfg.nix.enableDaemon)
 #   7.  Nix daemon           (cfg.nix.enableDaemon)
 #   8.  SFTP symlink         (cfg.ssh != null)
@@ -253,44 +252,6 @@ let
       }
       if ("/run/opengl-driver/lib" | path exists) {
           $env.LD_LIBRARY_PATH = $"/run/opengl-driver/lib:(if ($env.LD_LIBRARY_PATH? | default '''''' | is-empty) { '''''' } else { $'''''':($env.LD_LIBRARY_PATH)'''''' })"
-      }
-    ''
-    else "";
-
-  # ---------------------------------------------------------------------------
-  # Phase 5: Sudo setup
-  # ---------------------------------------------------------------------------
-  phaseSudo =
-    if cfg.user.supplementalGroups != []
-    then ''
-      ##############################################################################
-      # Sudo setup
-      ##############################################################################
-      let sudo_real = (
-          do { ^readlink -f /bin/sudo } | complete
-          | if $in.exit_code == 0 { $in.stdout | str trim } else { "" }
-      )
-      if not ($sudo_real | is-empty) {
-          cp --preserve [] $sudo_real /usr/bin/sudo
-          ^chown root:root /usr/bin/sudo
-          ^chmod 4755 /usr/bin/sudo
-          if not ("/etc/sudoers" | path exists) {
-              "root ALL=(ALL:ALL) ALL\n#includedir /etc/sudoers.d\n" | save /etc/sudoers
-              ^chmod 440 /etc/sudoers
-          }
-          mkdir /etc/sudoers.d
-          let llama_bin = (which llama-server | get path? | first? | default "")
-          if not ($llama_bin | is-empty) {
-              $"($dev_user.user) ALL=(root) NOPASSWD: ($llama_bin)\n" | save /etc/sudoers.d/llama-server
-              ^chmod 440 /etc/sudoers.d/llama-server
-          }
-          mkdir /etc/pam.d
-          [ "auth       sufficient   pam_permit.so"
-            "account    sufficient   pam_permit.so"
-            "session    sufficient   pam_permit.so" ]
-          | str join "\n"
-          | $"($in)\n"
-          | save /etc/pam.d/sudo
       }
     ''
     else "";
@@ -570,7 +531,6 @@ in
       + phaseStorePathExports
       + phaseUserCreation
       + phaseAiSetup
-      + phaseSudo
       + phaseNixDaemon
       + phaseSftpSymlink
       + phaseCargoCache
