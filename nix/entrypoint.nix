@@ -466,6 +466,43 @@ let
   ''
   else throw "entrypoint: unknown mode '${cfg.mode}'";
 
+  phaseDropbearSetup =
+    if cfg.ssh != null then
+      let port = toString cfg.ssh.port;
+      in ''
+        # Always generate host keys so dropbear can be started manually if needed
+        let rsa_key     = $"/home/($dev_user.user)/.ssh/dropbear_rsa_host_key"
+        let ed25519_key = $"/home/($dev_user.user)/.ssh/dropbear_ed25519_host_key"
+
+        if not ($rsa_key | path exists) {
+            ^dropbearkey -t rsa -f $rsa_key
+        }
+        if not ($ed25519_key | path exists) {
+            ^dropbearkey -t ed25519 -f $ed25519_key
+        }
+        ^chown $"($dev_user.uid):($dev_user.gid)" $rsa_key $ed25519_key
+        ^chmod 600 $rsa_key $ed25519_key
+
+        if ($env.DROPBEAR_ENABLE? | default "0") == "1" {
+            let auth_keys = $"/home/($dev_user.user)/.ssh/authorized_keys"
+            let authorized_keys_b64 = ($env.AUTHORIZED_KEYS_B64? | default "")
+            if not ($authorized_keys_b64 | is-empty) {
+                $authorized_keys_b64 | ^base64 -d | save --force $auth_keys
+                ^chmod 600 $auth_keys
+                ^chown $"($dev_user.uid):($dev_user.gid)" $auth_keys
+                "services:\n  dropbear:\n    startup: enabled\n"
+                    | save --force /run/vigil/layers/002-dropbear-enable.yaml
+                print " • SSH .............. dropbear starting on port ${port}"
+            } else {
+                warn "DROPBEAR_ENABLE=1 but AUTHORIZED_KEYS_B64 not set — dropbear will not autostart"
+                warn $"To start manually: add your key to ~/.ssh/authorized_keys then run: vigil services start dropbear"
+            }
+        } else {
+            print $" • SSH .............. available on port ${port} (set DROPBEAR_ENABLE=1 to autostart)"
+        }
+      ''
+    else "";
+
   phaseVigilExec =
   ''
     ##############################################################################
@@ -477,6 +514,8 @@ let
         | str replace --all "DEV_USER_PLACEHOLDER" $dev_user.user
 
     $layer_yaml | save --force /run/vigil/layers/001-container.yaml
+
+  '' + phaseDropbearSetup + ''
 
     job spawn { ^/bin/vigild --layers-dir /run/vigil/layers --socket /run/vigil/vigild.sock }
 
