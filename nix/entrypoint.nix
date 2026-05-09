@@ -498,7 +498,7 @@ let
                 warn $"To start manually: add your key to ~/.ssh/authorized_keys then run: vigil services start dropbear"
             }
         } else {
-            print $" • SSH .............. available on port ${port} (set DROPBEAR_ENABLE=1 to autostart)"
+            print $" • SSH .............. available on port ${port} \(set DROPBEAR_ENABLE=1 to autostart\)"
         }
       ''
     else "";
