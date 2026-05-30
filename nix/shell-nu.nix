@@ -143,10 +143,10 @@ let
     mkdir -p $out/etc/nushell
 
     # Starship prompt
-    ${pkgs.starship}/bin/starship init nu > $out/etc/nushell/starship-init.nu
+    ${starshipBin} init nu > $out/etc/nushell/starship-init.nu
 
     # Atuin history
-    ${pkgs.atuin}/bin/atuin init nu > $out/etc/nushell/atuin-init.nu
+    ${atuinBin} init nu > $out/etc/nushell/atuin-init.nu
   '';
 
   # ---------------------------------------------------------------------------
@@ -367,17 +367,20 @@ let
           PWD: [
             # 1) direnv – load .envrc on directory change (must be first)
             { ||
-              if (which direnv | is-not-empty) {
-                direnv export json | from json | load-env
-                # Workaround for PATH being a string in some Nushell versions
-                if 'ENV_CONVERSIONS' in $env and 'PATH' in $env.ENV_CONVERSIONS {
-                  $env.PATH = do $env.ENV_CONVERSIONS.PATH.from_string $env.PATH
+              if (".envrc" | path exists) {
+                let direnv_out = (${direnvBin} export json | str trim)
+                if not ($direnv_out | is-empty) {
+                  $direnv_out | from json | load-env
+                  # Workaround for PATH being a string in some Nushell versions
+                  if 'ENV_CONVERSIONS' in $env and 'PATH' in $env.ENV_CONVERSIONS {
+                    $env.PATH = do $env.ENV_CONVERSIONS.PATH.from_string $env.PATH
+                  }
                 }
               }
             },
-            # 2) Auto-cd to /workspace on first entry
+            # 2) Auto-cd to /workspace on first shell entry only
             { ||
-              if ($env.PWD != "/workspace") and (("/workspace" | path exists)) and (not ($env | get -o __NCL_WORKSPACE_CD_DONE | default false)) {
+              if (("/workspace" | path exists)) and (not ($env | get -o __NCL_WORKSPACE_CD_DONE | default false)) {
                 $env.__NCL_WORKSPACE_CD_DONE = true
                 cd /workspace
               }
