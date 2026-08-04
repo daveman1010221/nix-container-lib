@@ -20,7 +20,6 @@
 #   - nu_plugin_formats  — from/to toml, yaml, msgpack, etc.
 #   - nu_plugin_gstat    — git status structured output
 #   - nu_plugin_highlight — syntax highlighting in output
-#   - nu_plugin_polars   — dataframe commands for structured log/data analysis
 #   - nu_plugin_semver   — semver parsing and comparison
 #
 # Plugin registration:
@@ -61,7 +60,6 @@ let
     formats    # from/to toml, yaml, msgpack — critical for Rust projects
     gstat      # structured git status — replaces bobthefish git integration
     highlight  # syntax highlighting in shell output
-    polars     # dataframe commands — log analysis, structured agent output
     semver     # semver parsing — version management in Rust projects
   ];
 
