@@ -89,7 +89,6 @@ in
     nushellPlugins.query
     nushellPlugins.formats
     nushellPlugins.gstat
-    nushellPlugins.semver
   ]
   ++ [ (if pkgs ? nvim-pkg then pkgs.nvim-pkg else pkgs.neovim) ]
   ++ lib.optional (vigilCli != null) vigilCli;
@@ -187,7 +186,6 @@ in
     nushellPlugins.query
     nushellPlugins.formats
     nushellPlugins.gstat
-    nushellPlugins.semver
     atuin
     starship
     direnv

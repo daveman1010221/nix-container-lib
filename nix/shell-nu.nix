@@ -20,7 +20,6 @@
 #   - nu_plugin_formats  — from/to toml, yaml, msgpack, etc.
 #   - nu_plugin_gstat    — git status structured output
 #   - nu_plugin_highlight — syntax highlighting in output
-#   - nu_plugin_semver   — semver parsing and comparison
 #
 # Plugin registration:
 #   Nushell plugins must be registered before use. We pre-register them at
@@ -59,7 +58,6 @@ let
     query      # JSON/XML/web querying — essential for cargo metadata, API data
     formats    # from/to toml, yaml, msgpack — critical for Rust projects
     gstat      # structured git status — replaces bobthefish git integration
-    semver     # semver parsing — version management in Rust projects
   ];
 
   # ---------------------------------------------------------------------------
