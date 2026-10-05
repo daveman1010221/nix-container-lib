@@ -138,7 +138,7 @@ let
   toolchainHook = ''
     export CC=clang
     export CXX=clang++
-    export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.glibc pkgs.llvmPackages_19.clang ]}"
+    export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.llvmPackages_19.clang ]}"
     export LIBCLANG_PATH="${pkgs.llvmPackages_19.libclang.lib}/lib"
   '';
 

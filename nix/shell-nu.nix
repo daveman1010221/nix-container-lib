@@ -59,7 +59,6 @@ let
     query      # JSON/XML/web querying — essential for cargo metadata, API data
     formats    # from/to toml, yaml, msgpack — critical for Rust projects
     gstat      # structured git status — replaces bobthefish git integration
-    highlight  # syntax highlighting in shell output
     semver     # semver parsing — version management in Rust projects
   ];
 

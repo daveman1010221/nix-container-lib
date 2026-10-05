@@ -89,7 +89,6 @@ in
     nushellPlugins.query
     nushellPlugins.formats
     nushellPlugins.gstat
-    nushellPlugins.highlight
     nushellPlugins.semver
   ]
   ++ [ (if pkgs ? nvim-pkg then pkgs.nvim-pkg else pkgs.neovim) ]
@@ -188,7 +187,6 @@ in
     nushellPlugins.query
     nushellPlugins.formats
     nushellPlugins.gstat
-    nushellPlugins.highlight
     nushellPlugins.semver
     atuin
     starship
