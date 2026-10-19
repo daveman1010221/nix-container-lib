@@ -156,7 +156,9 @@ let
           file-append /etc/shadow $"($username):!x:::::::\n"
 
           mkdir $"/home/($username)"
-          ^chmod -R 755 $"/home/($username)"
+          # The home directory itself, not what is in it: a home that outlives the container (a volume mounted under it,
+          # holding keys) would have every file under it made readable to all at each start.
+          ^chmod 755 $"/home/($username)"
           ^chown -R $"($uid):($gid)" $"/home/($username)"
 
           for dir in [".config" ".local/share" ".cache" ".ssh"] {
@@ -186,7 +188,7 @@ let
           ''}
 
           ^chown -R $"($uid):($gid)" $"/home/($username)"
-          ^chmod -R 755 $"/home/($username)"
+          ^chmod 755 $"/home/($username)"
           ^chmod u+w $"/home/($username)"
 
           ${let suppGroups = builtins.concatStringsSep ","
