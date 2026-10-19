@@ -16,6 +16,13 @@
 #  10.  Banner
 #  11.  Write vigil layer + launch
 #       - dev/agent:   vigild backgrounded, shell exec'd as foreground
+#       - headless (CONTAINER_HEADLESS=1, e.g. a pod nobody is attached to):
+#                      the same, but PID 1 waits on vigild instead of exec'ing the
+#                      shell; the shell starts when someone logs in over SSH
+#
+# Both write /run/container-env.fish (the environment start.nu built) and
+# /run/container-banner, which /etc/fish/shellInit.fish takes for a login over
+# SSH: dropbear gives a session a fresh environment, not the container's.
 
 { pkgs
 , cfg
@@ -60,19 +67,24 @@ let
         $content | save --append $path
     }
 
+    # Sets the user's entry in /etc/passwd, adding it when there is none. A runtime that maps the host user in (podman's
+    # --userns=keep-id) has already added one; elsewhere (a Kubernetes pod) nothing has, and without an entry the user
+    # cannot be looked up: dropbear refuses their login. Their group is added too, when no group has their gid.
     def passwd-update [username: string, uid: int, gid: int, home: string, shell: string] {
-        open --raw /etc/passwd
-        | lines
-        | each { |line|
-            if ($line | str starts-with $"($username):") {
-                $"($username):x:($uid):($gid)::($home):($shell)"
-            } else {
-                $line
-            }
+        let entry = $"($username):x:($uid):($gid)::($home):($shell)"
+        let lines = (open --raw /etc/passwd | lines | where {|l| $l != "" })
+        let had = ($lines | any {|l| $l | str starts-with $"($username):" })
+        let updated = if $had {
+            $lines | each {|l| if ($l | str starts-with $"($username):") { $entry } else { $l } }
+        } else {
+            $lines | append $entry
         }
-        | str join "\n"
-        | $"($in)\n"
-        | save --force /etc/passwd
+        $updated | str join "\n" | $"($in)\n" | save --force /etc/passwd
+
+        let has_group = (open --raw /etc/group | lines | any {|l| ($l | split row ":" | get -o 2) == ($gid | into string) })
+        if not $has_group {
+            file-append /etc/group $"($username):x:($gid):\n"
+        }
     }
 
     def group-add-member [groupname: string, member: string] {
@@ -390,19 +402,18 @@ let
     ##############################################################################
     # Banner
     ##############################################################################
-    if ("/etc/container-info" | path exists) {
-        open --raw /etc/container-info
-    }
-    print $" • User ............. ($dev_user.user)  \(uid=($dev_user.uid) / gid=($dev_user.gid)\)"
-    print $" • Mode ............. ${cfg.mode}"
-    if ("/workspace" | path exists) {
-        let is_mounted = (open --raw /proc/mounts | str contains " /workspace ")
-        if $is_mounted {
-            print " • Volume mount ..... /workspace is mounted"
-        }
-    }
-    print " 🆘  Type 'container-help' for usage instructions"
-    print "────────────────────────────────────────────────────────────────────────────"
+    # Printed now, and kept for a login over SSH, which shows it (/etc/fish/shellInit.fish).
+    let banner = ([
+        (if ("/etc/container-info" | path exists) { open --raw /etc/container-info | str trim --right } else { null })
+        $" • User ............. ($dev_user.user)  \(uid=($dev_user.uid) / gid=($dev_user.gid)\)"
+        $" • Mode ............. ${cfg.mode}"
+        (if ("/workspace" | path exists) and (open --raw /proc/mounts | str contains " /workspace ") { " • Volume mount ..... /workspace is mounted" } else { null })
+        " 🆘  Type 'container-help' for usage instructions"
+        "────────────────────────────────────────────────────────────────────────────"
+    ] | compact | str join "\n")
+    print $banner
+    $"($banner)\n" | save --force /run/container-banner
+    ^chmod 644 /run/container-banner
   '';
 
   # ---------------------------------------------------------------------------
@@ -554,6 +565,34 @@ let
         $env.XDG_CACHE_HOME  = $"/home/($dev_user.user)/.cache"
         $env.XDG_CONFIG_HOME = $"/home/($dev_user.user)/.config"
         $env.XDG_DATA_HOME   = $"/home/($dev_user.user)/.local/share"
+    }
+
+    # The environment a shell here gets, for one that starts over SSH: dropbear gives a session a fresh environment, so
+    # without this it would miss everything above (PATH's coreutils, CARGO_TARGET_DIR, the toolchain's paths) and whatever
+    # the container was started with. /etc/fish/shellInit.fish sources it for a session over SSH. Who the session is
+    # (HOME, USER, ...) and the shell's own state are left to the session.
+    let session_own = [HOME USER LOGNAME SHELL PWD OLDPWD SHLVL TERM COLUMNS LINES _ FILE_PWD CURRENT_FILE LAST_EXIT_CODE CMD_DURATION_MS config ENV_CONVERSIONS TRANSIENT_PROMPT_COMMAND]
+    $env | transpose name value
+        | where {|e| $e.name not-in $session_own and not ($e.name | str starts-with "PROMPT_") and not ($e.name | str starts-with "NU_") }
+        | each {|e|
+            let kind = ($e.value | describe)
+            let text = if ($kind | str starts-with "list") { $e.value | str join ":" } else if $kind == "string" { $e.value } else { null }
+            if $text == null { null } else { $"set -gx ($e.name) '($text | str replace --all '\' '\\' | str replace --all "'" "\\'")'" }
+        }
+        | compact | str join "\n" | save --force /run/container-env.fish
+    ^chmod 644 /run/container-env.fish
+
+    # Headless (a pod nobody is attached to): no shell here. PID 1 stays while vigild supervises the services, SSH among
+    # them, and exits when vigild does, so the container is restarted rather than left without its services.
+    if ($env.CONTAINER_HEADLESS? | default "0") == "1" {
+        print " • Headless ......... no terminal here: log in over SSH"
+        loop {
+            if (ps | where name == "vigild" | is-empty) { die "vigild has stopped" }
+            sleep 10sec
+        }
+    }
+
+    if $dev_user.user != "root" {
         exec chroot --userspec $"($dev_user.uid):($dev_user.gid)" / ${shellBin} -l
     } else {
         exec ${shellBin}

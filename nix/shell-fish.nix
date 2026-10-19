@@ -291,6 +291,14 @@ let
   # Conditionally sources interactiveShellInit for login shells.
   # ---------------------------------------------------------------------------
   shellInitText = ''
+    # A login over SSH starts with dropbear's fresh environment, not the container's: take the one start.nu wrote, first, so
+    # everything below sees what a shell in the container's own terminal gets. Its banner is shown once, at login.
+    if set -q SSH_CONNECTION; and not set -q __container_env_sourced; and test -r /run/container-env.fish
+        set -gx __container_env_sourced 1
+        source /run/container-env.fish
+        status is-login; and test -r /run/container-banner; and cat /run/container-banner
+    end
+
     # Guard to avoid re-sourcing
     if not set -q __fish_nixos_shell_config_sourced
         set -g __fish_nixos_shell_config_sourced 1
