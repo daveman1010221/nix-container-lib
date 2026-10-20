@@ -7,11 +7,11 @@ in if !hasBin "cowsay" then null
          set total_cows (count $cows)
          set random_cow (random 1 $total_cows)
          set my_cow (string replace -r "\.cow\$" "" -- (path basename $cows[$random_cow]))
-         set output (printf "%s\n" $argv | cowsay -n -f $my_cow)
+         # Piped straight through: a command substitution splits the figure into lines, and `echo` joins them with spaces.
          if type -q dotacat
-             echo $output | dotacat
+             printf "%s\n" $argv | cowsay -n -f $my_cow | dotacat
          else
-             echo $output
+             printf "%s\n" $argv | cowsay -n -f $my_cow
          end
      end
    ''
