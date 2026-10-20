@@ -431,6 +431,16 @@ let
     then "  nix-daemon:\n    summary: Nix build daemon\n    command: /bin/nix-daemon --daemon\n    startup: enabled\n    on-success: restart\n    on-failure: restart\n\n"
     else "";
 
+  # What a headless container runs once vigild is up, as a one-shot service: it opens vigild's socket, and nix-daemon's
+  # when there is one, to the container's user (the vigil CLI and nix both talk to them as that user).
+  socketPermissionsScript = ''
+    for _ in 1..100 { if ("/run/vigil/vigild.sock" | path exists) { break }; sleep 100ms }
+    ^chmod 666 /run/vigil/vigild.sock
+  '' + lib.optionalString cfg.nix.enableDaemon ''
+    for _ in 1..150 { if ("/nix/var/nix/daemon-socket/socket" | path exists) { break }; sleep 200ms }
+    if ("/nix/var/nix/daemon-socket/socket" | path exists) { ^chmod 666 /nix/var/nix/daemon-socket/socket }
+  '';
+
   # Dropbear SSH service — only for dev/agent with SSH configured
   sshServiceBlock =
     if cfg.ssh != null then
@@ -530,9 +540,52 @@ let
 
   '' + phaseDropbearSetup + ''
 
-    # PID 1 is this script, which never waits on a process it did not start, so an orphan reparented to it stays a zombie.
-    # --reaper makes vigild the subreaper for everything beneath it (the services, and every SSH session under dropbear):
-    # their orphans are reparented to vigild, which reaps them.
+    # Who the session is, for the shell exec'd below and for a login over SSH; not for vigild and its services, which run
+    # as the container started them (nix-daemon, as root, must not take the user's HOME or cache).
+    let session_env = if $dev_user.user != "root" {
+        {
+            HOME: $"/home/($dev_user.user)"
+            USER: $dev_user.user
+            LOGNAME: $dev_user.user
+            SHELL: "${shellBin}"
+            XDG_CACHE_HOME: $"/home/($dev_user.user)/.cache"
+            XDG_CONFIG_HOME: $"/home/($dev_user.user)/.config"
+            XDG_DATA_HOME: $"/home/($dev_user.user)/.local/share"
+        }
+    } else { {} }
+
+    # The environment a shell here gets, for one that starts over SSH: dropbear gives a session a fresh environment, so
+    # without this it would miss everything above (PATH's coreutils, CARGO_TARGET_DIR, the toolchain's paths) and whatever
+    # the container was started with. /etc/fish/shellInit.fish sources it for a session over SSH. Who the session is
+    # (HOME, USER, ...) and the shell's own state are left to the session.
+    let session_own = [HOME USER LOGNAME SHELL PWD OLDPWD SHLVL TERM COLUMNS LINES _ FILE_PWD CURRENT_FILE LAST_EXIT_CODE CMD_DURATION_MS config ENV_CONVERSIONS TRANSIENT_PROMPT_COMMAND]
+    with-env $session_env {
+        $env | transpose name value
+            | where {|e| $e.name not-in $session_own and not ($e.name | str starts-with "PROMPT_") and not ($e.name | str starts-with "NU_") }
+            | each {|e|
+                let kind = ($e.value | describe)
+                let text = if ($kind | str starts-with "list") { $e.value | str join ":" } else if $kind == "string" { $e.value } else { null }
+                if $text == null { null } else { $"set -gx ($e.name) '($text | str replace --all '\' '\\' | str replace --all "'" "\\'")'" }
+            }
+            | compact | str join "\n" | save --force /run/container-env.fish
+    }
+    ^chmod 644 /run/container-env.fish
+
+    # Headless (a pod nobody is attached to): no shell here, and vigild is PID 1. It reaps every orphan in the container,
+    # and on SIGTERM (a pod being stopped) stops the services in order before it exits, where a script waiting on it would
+    # have ignored the signal until the kubelet killed everything. What has to wait for vigild's socket, and nix-daemon's,
+    # is a one-shot service of its own.
+    if ($env.CONTAINER_HEADLESS? | default "0") == "1" {
+        r#'${socketPermissionsScript}'# | save --force /run/vigil/socket-permissions.nu
+        "services:\n  socket-permissions:\n    summary: open vigild's and nix-daemon's sockets to the container's user\n    command: /bin/nu /run/vigil/socket-permissions.nu\n    startup: enabled\n    on-success: ignore\n    on-failure: ignore\n"
+            | save --force /run/vigil/layers/010-socket-permissions.yaml
+        print " • Headless ......... vigild is PID 1; log in over SSH"
+        exec /bin/vigild --layers-dir /run/vigil/layers --socket /run/vigil/vigild.sock
+    }
+
+    # Interactive: vigild in the background, the shell in front. PID 1 is the shell, which does not wait on a process it
+    # did not start, so --reaper makes vigild the subreaper for everything beneath it (the services, and every SSH session
+    # under dropbear): their orphans are reparented to vigild, which reaps them.
     job spawn { ^/bin/vigild --reaper --layers-dir /run/vigil/layers --socket /run/vigil/vigild.sock }
 
     let vigild_ready = (
@@ -562,40 +615,7 @@ let
     }
     ''}
 
-    if $dev_user.user != "root" {
-        $env.HOME    = $"/home/($dev_user.user)"
-        $env.USER    = $dev_user.user
-        $env.LOGNAME = $dev_user.user
-        $env.SHELL   = "${shellBin}"
-        $env.XDG_CACHE_HOME  = $"/home/($dev_user.user)/.cache"
-        $env.XDG_CONFIG_HOME = $"/home/($dev_user.user)/.config"
-        $env.XDG_DATA_HOME   = $"/home/($dev_user.user)/.local/share"
-    }
-
-    # The environment a shell here gets, for one that starts over SSH: dropbear gives a session a fresh environment, so
-    # without this it would miss everything above (PATH's coreutils, CARGO_TARGET_DIR, the toolchain's paths) and whatever
-    # the container was started with. /etc/fish/shellInit.fish sources it for a session over SSH. Who the session is
-    # (HOME, USER, ...) and the shell's own state are left to the session.
-    let session_own = [HOME USER LOGNAME SHELL PWD OLDPWD SHLVL TERM COLUMNS LINES _ FILE_PWD CURRENT_FILE LAST_EXIT_CODE CMD_DURATION_MS config ENV_CONVERSIONS TRANSIENT_PROMPT_COMMAND]
-    $env | transpose name value
-        | where {|e| $e.name not-in $session_own and not ($e.name | str starts-with "PROMPT_") and not ($e.name | str starts-with "NU_") }
-        | each {|e|
-            let kind = ($e.value | describe)
-            let text = if ($kind | str starts-with "list") { $e.value | str join ":" } else if $kind == "string" { $e.value } else { null }
-            if $text == null { null } else { $"set -gx ($e.name) '($text | str replace --all '\' '\\' | str replace --all "'" "\\'")'" }
-        }
-        | compact | str join "\n" | save --force /run/container-env.fish
-    ^chmod 644 /run/container-env.fish
-
-    # Headless (a pod nobody is attached to): no shell here. PID 1 stays while vigild supervises the services, SSH among
-    # them, and exits when vigild does, so the container is restarted rather than left without its services.
-    if ($env.CONTAINER_HEADLESS? | default "0") == "1" {
-        print " • Headless ......... no terminal here: log in over SSH"
-        loop {
-            if (ps | where name == "vigild" | is-empty) { die "vigild has stopped" }
-            sleep 10sec
-        }
-    }
+    load-env $session_env
 
     if $dev_user.user != "root" {
         exec chroot --userspec $"($dev_user.uid):($dev_user.gid)" / ${shellBin} -l
