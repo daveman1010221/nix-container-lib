@@ -530,7 +530,10 @@ let
 
   '' + phaseDropbearSetup + ''
 
-    job spawn { ^/bin/vigild --layers-dir /run/vigil/layers --socket /run/vigil/vigild.sock }
+    # PID 1 is this script, which never waits on a process it did not start, so an orphan reparented to it stays a zombie.
+    # --reaper makes vigild the subreaper for everything beneath it (the services, and every SSH session under dropbear):
+    # their orphans are reparented to vigild, which reaps them.
+    job spawn { ^/bin/vigild --reaper --layers-dir /run/vigil/layers --socket /run/vigil/vigild.sock }
 
     let vigild_ready = (
         1..20 | each { |_|
