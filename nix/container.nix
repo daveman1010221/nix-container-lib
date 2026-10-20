@@ -222,6 +222,8 @@ let
       "CMAKE=/bin/cmake"
       "CMAKE_MAKE_PROGRAM=/bin/make"
       "LANG=en_US.UTF-8"
+      # start.nu sets it too, but a process started in the container another way (kubectl exec, podman exec) has only this.
+      "LOCALE_ARCHIVE=${pkgs.glibcLocalesUtf8}/lib/locale/locale-archive"
       "TZ=UTC"
       "MANPAGER=sh -c 'col -bx | bat --language man --style plain'"
       "MANPATH=/share/man"
