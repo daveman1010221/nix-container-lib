@@ -225,6 +225,9 @@ let
         set -gx BAT_THEME gruvbox-dark
 
         set -gx MANPAGER "sh -c 'col -bx | bat --language man --style plain'"
+        # bat for everything paged (git falls back to PAGER); bat pages through less, kept to one screen when it fits.
+        set -gx PAGER     "bat --style=plain"
+        set -gx BAT_PAGER "less -RF"
 
         set -xg FZF_CTRL_T_COMMAND "fd --type file --hidden 2>/dev/null | sed 's#^\./##'"
         set -xg FZF_DEFAULT_OPTS   '--prompt="🔭 " --height 80% --layout=reverse --border'

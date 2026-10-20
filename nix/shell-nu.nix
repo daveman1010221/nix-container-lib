@@ -171,6 +171,9 @@ let
 
     # Man pager
     $env.MANPAGER = "sh -c 'col -bx | bat --language man --style plain'"
+    # bat for everything paged (git falls back to PAGER); bat pages through less, kept to one screen when it fits.
+    $env.PAGER = "bat --style=plain"
+    $env.BAT_PAGER = "less -RF"
 
     # FZF
     $env.FZF_DEFAULT_OPTS = '--prompt="🔭 " --height 80% --layout=reverse --border'

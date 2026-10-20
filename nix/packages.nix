@@ -61,6 +61,8 @@ in
   interactiveDev = with pkgs;
   [ atuin
     bat
+    # What bat pages through (BAT_PAGER), and git's pager without one.
+    less
     cowsay
     delta
     direnv
