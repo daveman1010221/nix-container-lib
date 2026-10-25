@@ -317,6 +317,10 @@ let
         })
         let member_list = ($members | str join ",")
 
+        # One build per build user. Without it Nix builds one derivation at a time (max-jobs
+        # defaults to 1), and every build user but the first sits idle.
+        file-append /etc/nix/nix.conf $"\nmax-jobs = ($cpus)\n"
+
         open --raw /etc/group
         | lines
         | where { not ($in | str starts-with "nixbld:") }
