@@ -19,6 +19,7 @@
 #                      store symlinks (configuration a volume may copy out of it)
 #   extraConfig      — optional OCI config fields, merged over the defaults
 #                      (Labels, Volumes, StopSignal, ...)
+#   tag              — the image tag (default "latest")
 #
 # AUTHORING WORKFLOW
 # ------------------
@@ -60,6 +61,7 @@
 , extraDerivations ? []
 , extraCommands ? ""
 , extraConfig ? {}
+, tag ? "latest"
 }:
 
 let
@@ -248,7 +250,7 @@ let
   # ---------------------------------------------------------------------------
   image = pkgs.dockerTools.buildLayeredImage {
     name      = cfg.name;
-    tag       = "latest";
+    inherit tag;
     maxLayers = if isMinimal then 10 else 20;
 
     contents =
