@@ -18,6 +18,10 @@ render-smoke-test:
     dhall-to-nix < smoke-test.dhall > smoke-test.nix
     @echo "Done. Commit smoke-test.nix alongside smoke-test.dhall."
 
+# Render smoke-test-system.dhall → smoke-test-system.nix
+render-smoke-test-system:
+    dhall-to-nix < smoke-test-system.dhall > smoke-test-system.nix
+
 # Type-check all .dhall files without rendering
 check-dhall:
     @echo "Type-checking dhall/types.dhall..."
@@ -28,15 +32,21 @@ check-dhall:
     cd dhall && dhall type < prelude.dhall
     @echo "Type-checking smoke-test.dhall..."
     dhall type < smoke-test.dhall
+    @echo "Type-checking smoke-test-system.dhall..."
+    dhall type < smoke-test-system.dhall
     @echo "All Dhall files type-check OK."
 
 # Render all .dhall files that have a companion .nix target
-render-all: render-smoke-test
+render-all: render-smoke-test render-smoke-test-system
     @echo "All Dhall files rendered."
 
 # Build the smoke test container image
 smoke-test:
     nix build .#smokeTest -L
+
+# Build the System-mode smoke test image
+smoke-test-system:
+    nix build .#smokeTestSystem -L
 
 # Run nix flake check
 check:

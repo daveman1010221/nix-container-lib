@@ -58,6 +58,17 @@ in
   , UserConfig      = T.UserConfig
   , AiConfig        = T.AiConfig
 
+  -- Startup and services
+  , SessionFallback = T.SessionFallback
+  , SessionUser     = T.SessionUser
+  , Session         = T.Session
+  , BootStep        = T.BootStep
+  , Launch          = T.Launch
+  , Startup         = T.Startup
+  , ServiceExit     = T.ServiceExit
+  , ServiceLogs     = T.ServiceLogs
+  , Service         = T.Service
+
   -- ---------------------------------------------------------------------------
   -- Defaults (the opinionated starting points)
   -- ---------------------------------------------------------------------------

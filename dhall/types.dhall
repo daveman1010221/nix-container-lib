@@ -7,7 +7,9 @@
 -- ---------------------------------------------------------------------------
 -- Mode
 -- ---------------------------------------------------------------------------
-let Mode = < Dev | InfraAgent | AIAgent | Minimal >
+-- System: a container that runs a set of services under vigild (PID 1), with no
+-- session: an infrastructure node, a daemon set. See Startup and Service below.
+let Mode = < Dev | InfraAgent | AIAgent | System | Minimal >
 
 let FailureMode = < FailFast | Collect >
 
@@ -141,6 +143,105 @@ let UserConfig =
 
 let AiConfig = { enable : Bool, modelsPath : Text, llamaPort : Natural }
 
+-- ---------------------------------------------------------------------------
+-- Startup
+--
+-- How a non-minimal container starts, in three parts, each independent of
+-- the others:
+--
+--   session — who a shell or a login runs as
+--   boot    — what is done once, at each start, before anything else runs
+--   launch  — what PID 1 is
+--
+-- ContainerConfig.startup = None takes each mode's own (from-dhall.nix), which
+-- is how these containers started before Startup existed:
+--   Dev, InfraAgent, AIAgent
+--           → session FromEnv Root with user.createUser, else None;
+--             no boot steps; launch Interactive { allowHeadless = True }
+--   System  → session None, no boot steps, launch System
+-- ---------------------------------------------------------------------------
+
+-- What FromEnv does when CREATE_USER, CREATE_UID and CREATE_GID are not all
+-- set: run as root (home /root), or refuse to start.
+let SessionFallback = < Root | Refuse >
+
+let SessionUser = { name : Text, uid : Natural, gid : Natural }
+
+let Session =
+      < None
+      -- ^ No user is created; a shell or a login is root, home /root.
+      | FromEnv : SessionFallback
+      -- ^ The user from CREATE_USER / CREATE_UID / CREATE_GID, created at
+      --   start (podman --userns=keep-id passes the host user's).
+      | Fixed : SessionUser
+      -- ^ This user, created at start.
+      >
+
+let BootStep =
+      < DelegateCgroups
+      -- ^ Moves every process into /init.scope and enables every cgroup v2
+      --   controller for the root's children, so that a runtime in the
+      --   container (containerd, runc) can create cgroups under it. Needs the
+      --   container's own cgroup namespace, writable (--cgroupns=private,
+      --   --privileged). Fails the start when it cannot.
+      | Sysctls : Text
+      -- ^ A sysctl.conf in the image, applied with sysctl -p. A setting the
+      --   kernel refuses is a warning.
+      | NftRuleset : Text
+      -- ^ An nftables ruleset in the image, loaded with nft -f. A failure is
+      --   a warning.
+      | Script : { name : Text, command : Text, required : Bool }
+      -- ^ A command (an executable and its arguments, no shell), run once.
+      --   A failure fails the start when required, else is a warning.
+      >
+
+let Launch =
+      < Interactive : { allowHeadless : Bool }
+      -- ^ vigild in the background, the session's shell in front (PID 1).
+      --   With allowHeadless, CONTAINER_HEADLESS=1 at run time gives Headless.
+      | Headless
+      -- ^ vigild is PID 1; the shell is reached by a login over SSH.
+      | System
+      -- ^ vigild is PID 1 and runs the container's services; nothing is set
+      --   up for a shell or a login.
+      >
+
+let Startup = { session : Session, boot : List BootStep, launch : Launch }
+
+-- ---------------------------------------------------------------------------
+-- Service
+--
+-- A service vigild runs, beside the mode's own (nix-daemon, dropbear, the
+-- agent supervisor). Written into vigild's layer at start.
+-- ---------------------------------------------------------------------------
+let ServiceExit =
+      < Restart | Ignore | Shutdown | SuccessShutdown | FailureShutdown >
+
+let ServiceLogs =
+      < Enabled
+      -- ^ Kept in vigild's log buffer and printed to its stdout.
+      | Disabled
+      -- ^ Kept in vigild's log buffer only (vigil logs).
+      | Passthrough
+      -- ^ Written straight to the container's stdout/stderr.
+      >
+
+let Service =
+      { name : Text
+      , summary : Text
+      , command : Text
+      -- ^ An executable and its arguments, split on whitespace (no shell).
+      , enabled : Bool
+      -- ^ Started when vigild starts.
+      , after : List Text
+      -- ^ Started once these services are running (not once they are done).
+      , onSuccess : ServiceExit
+      , onFailure : ServiceExit
+      , killDelay : Optional Text
+      -- ^ How long a stop waits before SIGKILL, e.g. "10s" (vigild: 5s).
+      , logs : ServiceLogs
+      }
+
 let ContainerConfig =
       { name : Text
       , mode : Mode
@@ -159,6 +260,9 @@ let ContainerConfig =
       , entrypoint : Optional Text
       , staticUid : Optional Natural
       , staticGid : Optional Natural
+      , startup : Optional Startup
+      -- ^ None: the mode's own (see Startup above).
+      , services : List Service
       }
 
 in  { Mode
@@ -185,4 +289,13 @@ in  { Mode
     , UserConfig
     , ContainerConfig
     , AiConfig
+    , SessionFallback
+    , SessionUser
+    , Session
+    , BootStep
+    , Launch
+    , Startup
+    , ServiceExit
+    , ServiceLogs
+    , Service
     }

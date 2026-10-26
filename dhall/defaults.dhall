@@ -113,6 +113,8 @@ let devContainer
       , entrypoint = None Text
       , staticUid = None Natural
       , staticGid = None Natural
+      , startup = None T.Startup
+      , services = [] : List T.Service
       }
 
 let infraAgentContainer
@@ -135,6 +137,8 @@ let infraAgentContainer
       , entrypoint = None Text
       , staticUid = None Natural
       , staticGid = None Natural
+      , startup = None T.Startup
+      , services = [] : List T.Service
       }
 
 let aiAgentContainer
@@ -156,6 +160,67 @@ let aiAgentContainer
       , entrypoint = None Text
       , staticUid = None Natural
       , staticGid = None Natural
+      , startup = None T.Startup
+      , services = [] : List T.Service
+      }
+
+-- ---------------------------------------------------------------------------
+-- defaultService
+--
+-- A service that starts with vigild and is restarted when it exits. Extend it:
+--   defaults.defaultService //
+--     { name = "etcd", summary = "etcd", command = "/bin/etcd-run"
+--     , killDelay = Some "10s"
+--     }
+-- ---------------------------------------------------------------------------
+let defaultService
+    : T.Service
+    = { name = "unnamed"
+      , summary = ""
+      , command = "/bin/false"
+      , enabled = True
+      , after = [] : List Text
+      , onSuccess = T.ServiceExit.Restart
+      , onFailure = T.ServiceExit.Restart
+      , killDelay = None Text
+      , logs = T.ServiceLogs.Enabled
+      }
+
+-- ---------------------------------------------------------------------------
+-- systemContainer
+--
+-- A container that runs its services under vigild as PID 1, with no session
+-- (no user, no shell in front, no SSH): an infrastructure node. List its
+-- services, and what it must do once at each start:
+--   defaults.systemContainer //
+--     { name = "my-node"
+--     , packageLayers = [ PackageLayer.Core, customLayer "node" [ ... ] ]
+--     , startup = Some
+--         { session = Session.None
+--         , boot = [ BootStep.DelegateCgroups ]
+--         , launch = Launch.System
+--         }
+--     , services = [ defaults.defaultService // { name = ..., command = ... } ]
+--     }
+-- ---------------------------------------------------------------------------
+let systemContainer
+    : T.ContainerConfig
+    = { name = "unnamed-system"
+      , mode = T.Mode.System
+      , packageLayers = [ T.PackageLayer.Micro, T.PackageLayer.Core ]
+      , shell = None T.Shell
+      , pipeline = None T.PipelineConfig
+      , ssh = None T.SSHConfig
+      , tls = None T.TLSConfig
+      , nix = defaultNix // { enableDaemon = False }
+      , user = defaultUser // { createUser = False }
+      , extraEnv = [] : List T.EnvVar
+      , ai = None T.AiConfig
+      , entrypoint = None Text
+      , staticUid = None Natural
+      , staticGid = None Natural
+      , startup = None T.Startup
+      , services = [] : List T.Service
       }
 
 -- ---------------------------------------------------------------------------
@@ -196,12 +261,16 @@ let minimalContainer
       , entrypoint = None Text
       , staticUid = None Natural
       , staticGid = None Natural
+      , startup = None T.Startup
+      , services = [] : List T.Service
       }
 
 in  { devContainer
     , infraAgentContainer
     , aiAgentContainer
+    , systemContainer
     , minimalContainer
+    , defaultService
     , minimalDashShell
     , minimalNuShell
     , defaultInteractiveFishShell

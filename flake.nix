@@ -70,6 +70,13 @@
           configNixPath = ./smoke-test.nix;
         }).image;
 
+        # A System-mode container: vigild as PID 1, boot steps, services (smoke-test-system.dhall).
+        legacyPackages.smokeTestSystem = (import ./nix/container.nix {
+          inherit system pkgs;
+          inputs      = { inherit uutils-micro vigil-rs; };
+          configNixPath = ./smoke-test-system.nix;
+        }).image;
+
         devShells.default = pkgs.mkShell {
           name = "nix-container-lib-dev";
 

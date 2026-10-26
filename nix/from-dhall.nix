@@ -22,6 +22,7 @@ let
     Dev       = "dev";
     InfraAgent = "infra-agent";
     AIAgent   = "ai-agent";
+    System    = "system";
     Minimal   = "minimal";
   };
 
@@ -300,6 +301,83 @@ let
   resolvedStaticGid  = cfg.staticGid  or null;
 
   # ---------------------------------------------------------------------------
+  # Startup translation
+  #
+  # Normalized for entrypoint.nix:
+  #   session = { kind = "none" | "from-env" | "fixed"; fallback = "root" | "refuse"; user = { name; uid; gid; } | null; }
+  #   boot    = [ { kind = "delegate-cgroups"; } | { kind = "sysctls"; path; } | { kind = "nft-ruleset"; path; }
+  #             | { kind = "script"; name; command; required; } ]
+  #   launch  = { kind = "interactive" | "headless" | "system"; allowHeadless; }
+  #
+  # A config without startup (startup = None, or rendered before Startup existed) starts as its mode always did.
+  # ---------------------------------------------------------------------------
+  resolveSession = session: session {
+    None    = { kind = "none"; fallback = "root"; user = null; };
+    FromEnv = fallback: {
+      kind = "from-env";
+      fallback = fallback { Root = "root"; Refuse = "refuse"; };
+      user = null;
+    };
+    Fixed   = user: { kind = "fixed"; fallback = "root"; user = { inherit (user) name uid gid; }; };
+  };
+
+  resolveBootStep = step: step {
+    DelegateCgroups = { kind = "delegate-cgroups"; };
+    Sysctls         = path: { kind = "sysctls"; inherit path; };
+    NftRuleset      = path: { kind = "nft-ruleset"; inherit path; };
+    Script          = s: { kind = "script"; inherit (s) name command required; };
+  };
+
+  resolveLaunch = launch: launch {
+    Interactive = p: { kind = "interactive"; allowHeadless = p.allowHeadless; };
+    Headless    = { kind = "headless"; allowHeadless = false; };
+    System      = { kind = "system"; allowHeadless = false; };
+  };
+
+  modeStartup =
+    if mode == "system" then {
+      session = { kind = "none"; fallback = "root"; user = null; };
+      boot    = [];
+      launch  = { kind = "system"; allowHeadless = false; };
+    } else {
+      session =
+        if cfg.user.createUser
+        then { kind = "from-env"; fallback = "root"; user = null; }
+        else { kind = "none"; fallback = "root"; user = null; };
+      boot    = [];
+      launch  = { kind = "interactive"; allowHeadless = true; };
+    };
+
+  resolvedStartup =
+    if (cfg.startup or null) == null then modeStartup
+    else {
+      session = resolveSession cfg.startup.session;
+      boot    = map resolveBootStep cfg.startup.boot;
+      launch  = resolveLaunch cfg.startup.launch;
+    };
+
+  # ---------------------------------------------------------------------------
+  # Services translation: one vigil layer service each (entrypoint.nix writes the layer)
+  # ---------------------------------------------------------------------------
+  resolveServiceExit = e: e {
+    Restart         = "restart";
+    Ignore          = "ignore";
+    Shutdown        = "shutdown";
+    SuccessShutdown = "success-shutdown";
+    FailureShutdown = "failure-shutdown";
+  };
+
+  resolveService = s: {
+    inherit (s) name summary command after killDelay;
+    startup   = if s.enabled then "enabled" else "disabled";
+    onSuccess = resolveServiceExit s.onSuccess;
+    onFailure = resolveServiceExit s.onFailure;
+    logs      = s.logs { Enabled = "enabled"; Disabled = "disabled"; Passthrough = "passthrough"; };
+  };
+
+  resolvedServices = map resolveService (cfg.services or []);
+
+  # ---------------------------------------------------------------------------
   # Assertions
   # ---------------------------------------------------------------------------
   tlsAssertion =
@@ -337,6 +415,32 @@ let
       }
     else true;
 
+  # Services: names unique, and every `after` one of them or one of the mode's own (vigild refuses the layer otherwise,
+  # at start).
+  modeServiceNames = [ "nix-daemon" "dropbear" "agent-supervisor" "socket-permissions" ];
+  serviceNames = map (s: s.name) resolvedServices;
+  servicesAssertion =
+    let
+      dup = lib.findFirst (n: lib.count (m: m == n) serviceNames > 1) null serviceNames;
+      unknownAfter = lib.concatMap
+        (s: map (a: "${s.name} → ${a}")
+          (builtins.filter (a: !(builtins.elem a (serviceNames ++ modeServiceNames))) s.after))
+        resolvedServices;
+    in
+      if mode == "minimal" && resolvedServices != []
+      then throw "from-dhall: ContainerConfig '${cfg.name}': mode = Minimal has no vigild to run services"
+      else if dup != null
+      then throw "from-dhall: ContainerConfig '${cfg.name}': two services are named '${dup}'"
+      else if unknownAfter != []
+      then throw "from-dhall: ContainerConfig '${cfg.name}': a service is ordered after one that does not exist: ${lib.concatStringsSep ", " unknownAfter}"
+      else true;
+
+  # A container that runs as a non-root user (staticUid) cannot create one at start.
+  sessionAssertion =
+    if resolvedStartup.session.kind != "none" && resolvedStaticUid != null && resolvedStaticUid != 0
+    then throw "from-dhall: ContainerConfig '${cfg.name}': a session user is created at start, as root; with staticUid the container does not start as root. Use session = Session.None."
+    else true;
+
   hasToolchain = builtins.any (layer: layer {
     Micro          = false;
     Core           = false;
@@ -353,6 +457,8 @@ in
   assert baseLayerAssertion;
   assert minimalAssertion;
   assert interactiveInMinimalAssertion;
+  assert servicesAssertion;
+  assert sessionAssertion;
 
   {
     name         = cfg.name;
@@ -370,5 +476,7 @@ in
     entrypoint   = resolvedEntrypoint;
     staticUid    = resolvedStaticUid;
     staticGid    = resolvedStaticGid;
+    startup      = resolvedStartup;
+    services     = resolvedServices;
     hasToolchain = hasToolchain;
   }

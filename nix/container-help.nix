@@ -72,6 +72,15 @@ let
         • Check logs via your container runtime (docker logs / podman logs)
         • Attach with: docker exec -it <container> /bin/sh
     ''
+    else if cfg.mode == "system" then ''
+      SYSTEM CONTAINER
+      ────────────────
+      vigild is PID 1 and runs this container's services; there is no session.
+
+      To inspect the services:
+        • vigil services list
+        • vigil logs <service> [-f]
+    ''
     else
       "# Unknown mode: ${cfg.mode}\n";
 

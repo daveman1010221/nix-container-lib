@@ -4,25 +4,35 @@
 # ContainerConfig. Only invoked for non-minimal containers — minimal containers
 # exec their entrypoint or shell binary directly, no start.nu involved.
 #
+# How the container starts is cfg.startup (from-dhall.nix), in three parts:
+#   session — who a shell or a login runs as: no one but root ("none"), the user
+#             CREATE_USER/UID/GID name ("from-env"), or one fixed at build ("fixed")
+#   boot    — steps done once, at each start, before anything else runs
+#   launch  — what PID 1 is: the shell, with vigild in the background
+#             ("interactive"), or vigild ("headless", "system")
+#
 # Phase order:
 #   1.  Helpers
 #   2.  Store-path exports
-#   3.  User creation        (cfg.user.createUser)
-#   4.  AI setup             (cfg.ai.enable)
+#   3.  Boot steps           (cfg.startup.boot)
+#   4.  Session              (cfg.startup.session)
+#   5.  AI setup             (cfg.ai.enable)
 #   6.  Arch config          (cfg.nix.enableDaemon)
 #   7.  Nix daemon           (cfg.nix.enableDaemon)
 #   8.  SFTP symlink         (cfg.ssh != null)
 #   9.  Cargo cache          (cfg.hasToolchain)
 #  10.  Banner
-#  11.  Write vigil layer + launch
-#       - dev/agent:   vigild backgrounded, shell exec'd as foreground
-#       - headless (CONTAINER_HEADLESS=1, e.g. a pod nobody is attached to):
-#                      the same, but PID 1 waits on vigild instead of exec'ing the
-#                      shell; the shell starts when someone logs in over SSH
+#  11.  Write vigil layer + launch (cfg.startup.launch)
+#       - interactive: vigild backgrounded, the session's shell exec'd as foreground;
+#                      with allowHeadless, CONTAINER_HEADLESS=1 makes it headless
+#       - headless:    PID 1 waits on vigild instead of exec'ing the shell; the
+#                      shell starts when someone logs in over SSH
+#       - system:      vigild is PID 1 and runs the services; nothing is set up
+#                      for a shell or a login
 #
-# Both write /run/container-env.fish (the environment start.nu built) and
-# /run/container-banner, which /etc/fish/shellInit.fish takes for a login over
-# SSH: dropbear gives a session a fresh environment, not the container's.
+# Interactive and headless write /run/container-env.fish (the environment start.nu
+# built) and /run/container-banner, which /etc/fish/shellInit.fish takes for a
+# login over SSH: dropbear gives a session a fresh environment, not the container's.
 
 { pkgs
 , cfg
@@ -39,6 +49,9 @@ let
     else "/bin/nu";
 
   nuBin = "${pkgs.nushell}/bin/nu";
+
+  startup = cfg.startup;
+  launch  = startup.launch.kind;
 
   # ---------------------------------------------------------------------------
   # Phase 1: Preamble + helpers
@@ -142,76 +155,149 @@ let
       builtinExports + userExports;
 
   # ---------------------------------------------------------------------------
-  # Phase 3: User creation
+  # Phase 3: Boot steps
+  #
+  # Each runs once, at each start, before the session is set up and before
+  # vigild: what has to be true of the container before anything runs in it.
   # ---------------------------------------------------------------------------
-  phaseUserCreation =
-    if cfg.user.createUser
-    then ''
-      ##############################################################################
-      # User creation
-      ##############################################################################
-      def create-user [username: string, uid: int, gid: int] {
-          passwd-update $username $uid $gid $"/home/($username)" "${shellBin}"
-
-          file-append /etc/shadow $"($username):!x:::::::\n"
-
-          mkdir $"/home/($username)"
-          # The home directory itself, not what is in it: a home that outlives the container (a volume mounted under it,
-          # holding keys) would have every file under it made readable to all at each start.
-          ^chmod 755 $"/home/($username)"
-          ^chown -R $"($uid):($gid)" $"/home/($username)"
-
-          for dir in [".config" ".local/share" ".cache" ".ssh"] {
-              ^install -d -m 700 $"/home/($username)/($dir)"
+  bootStep = step:
+    if step.kind == "delegate-cgroups" then ''
+      # cgroup v2 lets a cgroup hand controllers to its children only while no process is in it. Every process moves to
+      # /init.scope (where podman exec puts its own, and where vigild and its services stay), and every controller is
+      # enabled for the root's children, where a runtime in the container (containerd, runc) creates its cgroups.
+      do {
+          let cg = "/sys/fs/cgroup"
+          let needs = "the container needs a cgroup namespace of its own, writable (--cgroupns=private, --privileged)"
+          try { mkdir $"($cg)/init.scope" } catch {|e| die $"cannot create ($cg)/init.scope \(($e.msg)\): ($needs)" }
+          for _ in 1..3 {
+              let procs = (open --raw $"($cg)/cgroup.procs" | lines | where {|p| $p != "" })
+              if ($procs | is-empty) { break }
+              for p in $procs { try { $p | save --append $"($cg)/init.scope/cgroup.procs" } }
           }
-          ^chown $"($uid):($gid)" $"/home/($username)/.config"
-          ^chown $"($uid):($gid)" $"/home/($username)/.local/share"
-          ^chown $"($uid):($gid)" $"/home/($username)/.cache"
-          ^chown $"($uid):($gid)" $"/home/($username)/.ssh"
-
-          need rsync
-          if ("/root" | path exists) {
-              ^rsync -a $"--chown=($uid):($gid)" /root/ $"/home/($username)/" | ignore
+          let controllers = (open --raw $"($cg)/cgroup.controllers" | str trim | split row " " | where {|c| $c != "" } | each {|c| $"+($c)" } | str join " ")
+          try { $controllers | save --append $"($cg)/cgroup.subtree_control" } catch {
+              die $"cannot enable the cgroup controllers \(($controllers)\) for the root's children: ($needs)"
           }
-
-          ^chmod 1777 /tmp
-
-          ${if shellBin == "/bin/nu" then ''
-          ^install -Dm644 "${cfg.user.skeletonPath}/config.nu" $"/home/($username)/.config/nushell/config.nu"
-          ^install -Dm644 "${cfg.user.skeletonPath}/env.nu"    $"/home/($username)/.config/nushell/env.nu"
-          if ("/etc/nushell/plugin-registry.msgpackz" | path exists) {
-              ^install -Dm644 /etc/nushell/plugin-registry.msgpackz $"/home/($username)/.config/nushell/plugin.msgpackz"
-          }
-          '' else ''
-          ^install -Dm644 "${cfg.user.skeletonPath}/config.fish" $"/home/($username)/.config/fish/config.fish"
-          touch $"/home/($username)/.config/fish/fish_variables"
-          ''}
-
-          ^chown -R $"($uid):($gid)" $"/home/($username)"
-          ^chmod 755 $"/home/($username)"
-          ^chmod u+w $"/home/($username)"
-
-          ${let suppGroups = builtins.concatStringsSep ","
-              (map (g: "${g.name}:${toString g.gid}") cfg.user.supplementalGroups);
-            in lib.optionalString (suppGroups != "") ''
-          let supp_groups = "${suppGroups}"
-          if not ($supp_groups | is-empty) {
-              $supp_groups | split row "," | each { |entry|
-                  let g_name = ($entry | split row ":" | first)
-                  let g_gid  = ($entry | split row ":" | last | into int)
-                  let exists = (open --raw /etc/group | lines | any { str starts-with $"($g_name):" })
-                  if $exists {
-                      group-add-member $g_name $username
-                  } else {
-                      file-append /etc/group   $"($g_name):x:($g_gid):($username)\n"
-                      file-append /etc/gshadow $"($g_name):!::\n"
-                  }
-              }
-          }
-          ''}
       }
+    ''
+    else if step.kind == "sysctls" then ''
+      do {
+          let r = (do { ^${pkgs.procps}/bin/sysctl -q -p "${step.path}" } | complete)
+          if $r.exit_code != 0 { warn $"some sysctls in ${step.path} were not applied: ($r.stderr | str trim)" }
+      }
+    ''
+    else if step.kind == "nft-ruleset" then ''
+      do {
+          let r = (do { ^${pkgs.nftables}/bin/nft -f "${step.path}" } | complete)
+          if $r.exit_code != 0 { warn $"the nftables ruleset ${step.path} was not loaded: ($r.stderr | str trim)" }
+      }
+    ''
+    else if step.kind == "script" then
+      let words = lib.filter (w: w != "") (lib.splitString " " step.command);
+      in ''
+        do {
+            let ok = (try { run-external ${lib.concatMapStringsSep " " builtins.toJSON words}; true } catch { false })
+            if not $ok {
+                ${if step.required
+                  then ''die "boot step '${step.name}' failed"''
+                  else ''warn "boot step '${step.name}' failed"''}
+            }
+        }
+      ''
+    else throw "entrypoint: unknown boot step '${step.kind}'";
 
-      # Attempt user creation — degrade gracefully if env vars missing
+  phaseBoot = lib.optionalString (startup.boot != []) (''
+    ##############################################################################
+    # Boot steps
+    ##############################################################################
+  '' + lib.concatMapStrings bootStep startup.boot);
+
+  # ---------------------------------------------------------------------------
+  # Phase 4: Session
+  #
+  # Every kind ends in the same record, $session: { user, uid, gid, home }. A
+  # session that is root (none, or from-env falling back) has /root for home.
+  # ---------------------------------------------------------------------------
+  createUserFn = ''
+    ##############################################################################
+    # Session user
+    ##############################################################################
+    def create-user [username: string, uid: int, gid: int] {
+        passwd-update $username $uid $gid $"/home/($username)" "${shellBin}"
+
+        file-append /etc/shadow $"($username):!x:::::::\n"
+
+        mkdir $"/home/($username)"
+        # The home directory itself, not what is in it: a home that outlives the container (a volume mounted under it,
+        # holding keys) would have every file under it made readable to all at each start.
+        ^chmod 755 $"/home/($username)"
+        ^chown -R $"($uid):($gid)" $"/home/($username)"
+
+        for dir in [".config" ".local/share" ".cache" ".ssh"] {
+            ^install -d -m 700 $"/home/($username)/($dir)"
+        }
+        ^chown $"($uid):($gid)" $"/home/($username)/.config"
+        ^chown $"($uid):($gid)" $"/home/($username)/.local/share"
+        ^chown $"($uid):($gid)" $"/home/($username)/.cache"
+        ^chown $"($uid):($gid)" $"/home/($username)/.ssh"
+
+        need rsync
+        if ("/root" | path exists) {
+            ^rsync -a $"--chown=($uid):($gid)" /root/ $"/home/($username)/" | ignore
+        }
+
+        ^chmod 1777 /tmp
+
+        ${if shellBin == "/bin/nu" then ''
+        ^install -Dm644 "${cfg.user.skeletonPath}/config.nu" $"/home/($username)/.config/nushell/config.nu"
+        ^install -Dm644 "${cfg.user.skeletonPath}/env.nu"    $"/home/($username)/.config/nushell/env.nu"
+        if ("/etc/nushell/plugin-registry.msgpackz" | path exists) {
+            ^install -Dm644 /etc/nushell/plugin-registry.msgpackz $"/home/($username)/.config/nushell/plugin.msgpackz"
+        }
+        '' else ''
+        ^install -Dm644 "${cfg.user.skeletonPath}/config.fish" $"/home/($username)/.config/fish/config.fish"
+        touch $"/home/($username)/.config/fish/fish_variables"
+        ''}
+
+        ^chown -R $"($uid):($gid)" $"/home/($username)"
+        ^chmod 755 $"/home/($username)"
+        ^chmod u+w $"/home/($username)"
+
+        ${let suppGroups = builtins.concatStringsSep ","
+            (map (g: "${g.name}:${toString g.gid}") cfg.user.supplementalGroups);
+          in lib.optionalString (suppGroups != "") ''
+        let supp_groups = "${suppGroups}"
+        if not ($supp_groups | is-empty) {
+            $supp_groups | split row "," | each { |entry|
+                let g_name = ($entry | split row ":" | first)
+                let g_gid  = ($entry | split row ":" | last | into int)
+                let exists = (open --raw /etc/group | lines | any { str starts-with $"($g_name):" })
+                if $exists {
+                    group-add-member $g_name $username
+                } else {
+                    file-append /etc/group   $"($g_name):x:($g_gid):($username)\n"
+                    file-append /etc/gshadow $"($g_name):!::\n"
+                }
+            }
+        }
+        ''}
+    }
+
+  '';
+
+  rootSession = ''{ user: "root", uid: 0, gid: 0, home: "/root" }'';
+
+  phaseSession =
+    let s = startup.session;
+    in
+    if s.kind == "none" then ''
+      let session = ${rootSession}
+    ''
+    else if s.kind == "fixed" then createUserFn + ''
+      create-user "${s.user.name}" ${toString s.user.uid} ${toString s.user.gid}
+      let session = { user: "${s.user.name}", uid: ${toString s.user.uid}, gid: ${toString s.user.gid}, home: "/home/${s.user.name}" }
+    ''
+    else if s.kind == "from-env" then createUserFn + ''
       let user_vars_set = ((not ($env.CREATE_USER? | default "" | is-empty)) and
                            (not ($env.CREATE_UID?  | default "" | is-empty)) and
                            (not ($env.CREATE_GID?  | default "" | is-empty)))
@@ -219,22 +305,24 @@ let
       if $user_vars_set {
           create-user $env.CREATE_USER ($env.CREATE_UID | into int) ($env.CREATE_GID | into int)
       } else {
+          ${if s.fallback == "refuse" then ''
+          die "CREATE_USER, CREATE_UID and CREATE_GID must be set: pass -e CREATE_USER=name -e CREATE_UID=1000 -e CREATE_GID=1000"
+          '' else ''
           warn "CREATE_USER/CREATE_UID/CREATE_GID not set — running as root"
           warn "To create a user, pass: -e CREATE_USER=name -e CREATE_UID=1000 -e CREATE_GID=1000"
+          ''}
       }
 
-      let dev_user = if $user_vars_set {
-          { user: $env.CREATE_USER, uid: ($env.CREATE_UID | into int), gid: ($env.CREATE_GID | into int) }
+      let session = if $user_vars_set {
+          { user: $env.CREATE_USER, uid: ($env.CREATE_UID | into int), gid: ($env.CREATE_GID | into int), home: $"/home/($env.CREATE_USER)" }
       } else {
-          { user: "root", uid: 0, gid: 0 }
+          ${rootSession}
       }
     ''
-    else ''
-      let dev_user = { user: "root", uid: 0, gid: 0 }
-    '';
+    else throw "entrypoint: unknown session kind '${s.kind}'";
 
   # ---------------------------------------------------------------------------
-  # Phase 4: AI setup
+  # Phase 5: AI setup
   # ---------------------------------------------------------------------------
   phaseAiSetup =
     if cfg.ai != null && cfg.ai.enable
@@ -243,19 +331,19 @@ let
       # AI tooling setup
       ##############################################################################
       if ("/opt/llama-models" | path exists) {
-          mkdir $"/home/($dev_user.user)/.cache/huggingface"
-          ln -sfn /opt/llama-models $"/home/($dev_user.user)/.cache/llama.cpp"
-          ln -sfn /opt/llama-models $"/home/($dev_user.user)/.cache/huggingface/hub"
-          ^chown -h $"($dev_user.uid):($dev_user.gid)" $"/home/($dev_user.user)/.cache/llama.cpp"
-          ^chown -h $"($dev_user.uid):($dev_user.gid)" $"/home/($dev_user.user)/.cache/huggingface/hub"
+          mkdir $"($session.home)/.cache/huggingface"
+          ln -sfn /opt/llama-models $"($session.home)/.cache/llama.cpp"
+          ln -sfn /opt/llama-models $"($session.home)/.cache/huggingface/hub"
+          ^chown -h $"($session.uid):($session.gid)" $"($session.home)/.cache/llama.cpp"
+          ^chown -h $"($session.uid):($session.gid)" $"($session.home)/.cache/huggingface/hub"
       }
       if ("/opt/ollama" | path exists) {
-          ln -sfn /opt/ollama $"/home/($dev_user.user)/.ollama"
-          ^chown -h $"($dev_user.uid):($dev_user.gid)" $"/home/($dev_user.user)/.ollama"
+          ln -sfn /opt/ollama $"($session.home)/.ollama"
+          ^chown -h $"($session.uid):($session.gid)" $"($session.home)/.ollama"
       }
       if ("/opt/pi" | path exists) {
-          ln -sfn /opt/pi $"/home/($dev_user.user)/.pi"
-          ^chown -h $"($dev_user.uid):($dev_user.gid)" $"/home/($dev_user.user)/.pi"
+          ln -sfn /opt/pi $"($session.home)/.pi"
+          ^chown -h $"($session.uid):($session.gid)" $"($session.home)/.pi"
       }
       if (which ollama | is-not-empty) {
           let ollama_bin = (which ollama | get path | first)
@@ -296,7 +384,7 @@ let
         ##############################################################################
         # Nix daemon setup
         ##############################################################################
-        file-append /etc/nix/nix.conf $"\nextra-trusted-users = ($dev_user.user)\n"
+        file-append /etc/nix/nix.conf $"\nextra-trusted-users = ($session.user)\n"
 
         ${buildUserBlock}
 
@@ -395,7 +483,7 @@ let
       ##############################################################################
       let cargo_target = "/var/cache/cargo-target"
       mkdir $cargo_target
-      ^chown -R $"($dev_user.uid):($dev_user.gid)" /var/cache
+      ^chown -R $"($session.uid):($session.gid)" /var/cache
       ^chmod 0755 $cargo_target
       $env.CARGO_TARGET_DIR = $cargo_target
     ''
@@ -411,10 +499,10 @@ let
     # Printed now, and kept for a login over SSH, which shows it (/etc/fish/shellInit.fish).
     let banner = ([
         (if ("/etc/container-info" | path exists) { open --raw /etc/container-info | str trim --right } else { null })
-        $" • User ............. ($dev_user.user)  \(uid=($dev_user.uid) / gid=($dev_user.gid)\)"
+        $" • User ............. ($session.user)  \(uid=($session.uid) / gid=($session.gid)\)"
         $" • Mode ............. ${cfg.mode}"
         (if ("/workspace" | path exists) and (open --raw /proc/mounts | str contains " /workspace ") { " • Volume mount ..... /workspace is mounted" } else { null })
-        " 🆘  Type 'container-help' for usage instructions"
+        ${lib.optionalString (launch != "system") ''" 🆘  Type 'container-help' for usage instructions"''}
         "────────────────────────────────────────────────────────────────────────────"
     ] | compact | str join "\n")
     print $banner
@@ -424,82 +512,79 @@ let
 
   # ---------------------------------------------------------------------------
   # Phase 11: Vigil layer + launch
-  #
-  # Dev/agent:   vigild backgrounded managing background services,
-  #              shell exec'd as foreground with graceful degradation
   # ---------------------------------------------------------------------------
 
-  # Nix daemon service — only when enabled, only for dev/agent
-  nixDaemonServiceBlock =
-    if cfg.nix.enableDaemon
-    then "  nix-daemon:\n    summary: Nix build daemon\n    command: /bin/nix-daemon --daemon\n    startup: enabled\n    on-success: restart\n    on-failure: restart\n\n"
-    else "";
+  # The layer is written as JSON, which vigild reads as YAML. SESSION_HOME is the session's home, filled in at start.
+  modeServices =
+    lib.optionalAttrs (cfg.nix.enableDaemon && cfg.mode == "dev") {
+      nix-daemon = {
+        summary = "Nix build daemon";
+        command = "/bin/nix-daemon --daemon";
+        startup = "enabled";
+        on-success = "restart";
+        on-failure = "restart";
+      };
+    }
+    // lib.optionalAttrs (cfg.mode == "infra-agent") {
+      agent-supervisor = {
+        summary = "Agent supervisor";
+        command = "/bin/agent-supervisor";
+        startup = "enabled";
+        logs-forward = "passthrough";
+        on-success = "success-shutdown";
+        on-failure = "failure-shutdown";
+      };
+    }
+    // lib.optionalAttrs (cfg.mode == "ai-agent") {
+      agent-supervisor = {
+        summary = "Agent supervisor";
+        command = "/bin/agent-supervisor";
+        startup = "enabled";
+        logs-forward = "passthrough";
+        on-success = "restart";
+        on-failure = "restart";
+      };
+    }
+    // lib.optionalAttrs (cfg.ssh != null && builtins.elem cfg.mode [ "dev" "ai-agent" "infra-agent" ]) {
+      dropbear = {
+        summary = "SSH server (Dropbear)";
+        command = lib.concatStringsSep " " [
+          "dropbear -F -E -e -a -s"
+          "-r SESSION_HOME/.ssh/dropbear_rsa_host_key"
+          "-r SESSION_HOME/.ssh/dropbear_ed25519_host_key"
+          "-p 0.0.0.0:${toString cfg.ssh.port}"
+        ];
+        startup = "disabled";
+        on-success = "restart";
+        on-failure = "restart";
+      };
+    };
 
-  # What a headless container runs once vigild is up, as a one-shot service: it opens vigild's socket, and nix-daemon's
-  # when there is one, to the container's user (the vigil CLI and nix both talk to them as that user).
-  socketPermissionsScript = ''
-    for _ in 1..100 { if ("/run/vigil/vigild.sock" | path exists) { break }; sleep 100ms }
-    ^chmod 666 /run/vigil/vigild.sock
-  '' + lib.optionalString cfg.nix.enableDaemon ''
-    for _ in 1..150 { if ("/nix/var/nix/daemon-socket/socket" | path exists) { break }; sleep 200ms }
-    if ("/nix/var/nix/daemon-socket/socket" | path exists) { ^chmod 666 /nix/var/nix/daemon-socket/socket }
-  '';
+  configServices = lib.listToAttrs (map (s: {
+    inherit (s) name;
+    value = {
+      inherit (s) summary command startup;
+      on-success   = s.onSuccess;
+      on-failure   = s.onFailure;
+      logs-forward = s.logs;
+    }
+    // lib.optionalAttrs (s.after != []) { inherit (s) after; }
+    // lib.optionalAttrs (s.killDelay != null) { kill-delay = s.killDelay; };
+  }) cfg.services);
 
-  # Dropbear SSH service — only for dev/agent with SSH configured
-  sshServiceBlock =
-    if cfg.ssh != null then
-      if cfg.mode == "dev" || cfg.mode == "ai-agent" || cfg.mode == "infra-agent"
-      then
-        let port = toString cfg.ssh.port;
-        in "  dropbear:\n    summary: SSH server (Dropbear)\n    command: >-\n      dropbear -F -E -e -a -s\n      -r /home/DEV_USER_PLACEHOLDER/.ssh/dropbear_rsa_host_key\n      -r /home/DEV_USER_PLACEHOLDER/.ssh/dropbear_ed25519_host_key\n      -p 0.0.0.0:${port}\n    startup: disabled\n    on-success: restart\n    on-failure: restart\n"
-      else ""
-    else "";
-
-  vigilLayer =
-  if cfg.mode == "dev" then ''
-    summary: dev container background services
-
-    services:
-    ${nixDaemonServiceBlock}
-    ${sshServiceBlock}
-  ''
-  else if cfg.mode == "infra-agent" then ''
-    summary: infrastructure agent services
-
-    services:
-
-      agent-supervisor:
-        summary: Agent supervisor
-        command: /bin/agent-supervisor
-        startup: enabled
-        logs-forward: passthrough
-        on-success: success-shutdown
-        on-failure: failure-shutdown
-    ${sshServiceBlock}
-  ''
-  else if cfg.mode == "ai-agent" then ''
-    summary: AI agent background services
-
-    services:
-
-      agent-supervisor:
-        summary: Agent supervisor
-        command: /bin/agent-supervisor
-        startup: enabled
-        logs-forward: passthrough
-        on-success: restart
-        on-failure: restart
-    ${sshServiceBlock}
-  ''
-  else throw "entrypoint: unknown mode '${cfg.mode}'";
+  vigilLayer = builtins.toJSON {
+    summary = "${cfg.name} (${cfg.mode})";
+    services = modeServices // configServices;
+  };
 
   phaseDropbearSetup =
     if cfg.ssh != null then
       let port = toString cfg.ssh.port;
       in ''
         # Always generate host keys so dropbear can be started manually if needed
-        let rsa_key     = $"/home/($dev_user.user)/.ssh/dropbear_rsa_host_key"
-        let ed25519_key = $"/home/($dev_user.user)/.ssh/dropbear_ed25519_host_key"
+        ^install -d -m 700 $"($session.home)/.ssh"
+        let rsa_key     = $"($session.home)/.ssh/dropbear_rsa_host_key"
+        let ed25519_key = $"($session.home)/.ssh/dropbear_ed25519_host_key"
 
         if not ($rsa_key | path exists) {
             ^dropbearkey -t rsa -f $rsa_key
@@ -507,16 +592,16 @@ let
         if not ($ed25519_key | path exists) {
             ^dropbearkey -t ed25519 -f $ed25519_key
         }
-        ^chown $"($dev_user.uid):($dev_user.gid)" $rsa_key $ed25519_key
+        ^chown $"($session.uid):($session.gid)" $rsa_key $ed25519_key
         ^chmod 600 $rsa_key $ed25519_key
 
         if ($env.DROPBEAR_ENABLE? | default "0") == "1" {
-            let auth_keys = $"/home/($dev_user.user)/.ssh/authorized_keys"
+            let auth_keys = $"($session.home)/.ssh/authorized_keys"
             let authorized_keys_b64 = ($env.AUTHORIZED_KEYS_B64? | default "")
             if not ($authorized_keys_b64 | is-empty) {
                 $authorized_keys_b64 | ^base64 -d | save --force $auth_keys
                 ^chmod 600 $auth_keys
-                ^chown $"($dev_user.uid):($dev_user.gid)" $auth_keys
+                ^chown $"($session.uid):($session.gid)" $auth_keys
                 "services:\n  dropbear:\n    startup: enabled\n"
                     | save --force /run/vigil/layers/002-dropbear-enable.yaml
                 print " • SSH .............. dropbear starting on port ${port}"
@@ -530,31 +615,55 @@ let
       ''
     else "";
 
-  phaseVigilExec =
-  ''
+  phaseWriteLayer = ''
     ##############################################################################
-    # Dev/AIAgent: vigild backgrounded, shell exec'd as foreground
+    # Vigil layer
     ##############################################################################
     mkdir /run/vigil/layers
+    r#'${vigilLayer}'#
+        | str replace --all "SESSION_HOME" $session.home
+        | save --force /run/vigil/layers/001-container.yaml
 
-    let layer_yaml = "${vigilLayer}"
-        | str replace --all "DEV_USER_PLACEHOLDER" $dev_user.user
+  '';
 
-    $layer_yaml | save --force /run/vigil/layers/001-container.yaml
+  # System: vigild is PID 1 and runs the services. No session is set up for: no environment file for a login, no
+  # sockets opened to a user.
+  phaseLaunchSystem = ''
+    ##############################################################################
+    # System: vigild is PID 1
+    ##############################################################################
+    need vigild
+    exec /bin/vigild --layers-dir /run/vigil/layers --socket /run/vigil/vigild.sock
+  '';
 
-  '' + phaseDropbearSetup + ''
+  # What a headless container runs once vigild is up, as a one-shot service: it opens vigild's socket, and nix-daemon's
+  # when there is one, to the container's user (the vigil CLI and nix both talk to them as that user).
+  socketPermissionsScript = ''
+    for _ in 1..100 { if ("/run/vigil/vigild.sock" | path exists) { break }; sleep 100ms }
+    ^chmod 666 /run/vigil/vigild.sock
+  '' + lib.optionalString cfg.nix.enableDaemon ''
+    for _ in 1..150 { if ("/nix/var/nix/daemon-socket/socket" | path exists) { break }; sleep 200ms }
+    if ("/nix/var/nix/daemon-socket/socket" | path exists) { ^chmod 666 /nix/var/nix/daemon-socket/socket }
+  '';
+
+  headlessCondition =
+    if launch == "headless" then "true"
+    else if startup.launch.allowHeadless then ''(($env.CONTAINER_HEADLESS? | default "0") == "1")''
+    else "false";
+
+  phaseLaunchSession = phaseDropbearSetup + ''
 
     # Who the session is, for the shell exec'd below and for a login over SSH; not for vigild and its services, which run
     # as the container started them (nix-daemon, as root, must not take the user's HOME or cache).
-    let session_env = if $dev_user.user != "root" {
+    let session_env = if $session.user != "root" {
         {
-            HOME: $"/home/($dev_user.user)"
-            USER: $dev_user.user
-            LOGNAME: $dev_user.user
+            HOME: $session.home
+            USER: $session.user
+            LOGNAME: $session.user
             SHELL: "${shellBin}"
-            XDG_CACHE_HOME: $"/home/($dev_user.user)/.cache"
-            XDG_CONFIG_HOME: $"/home/($dev_user.user)/.config"
-            XDG_DATA_HOME: $"/home/($dev_user.user)/.local/share"
+            XDG_CACHE_HOME: $"($session.home)/.cache"
+            XDG_CONFIG_HOME: $"($session.home)/.config"
+            XDG_DATA_HOME: $"($session.home)/.local/share"
         }
     } else { {} }
 
@@ -579,13 +688,14 @@ let
     # and on SIGTERM (a pod being stopped) stops the services in order before it exits, where a script waiting on it would
     # have ignored the signal until the kubelet killed everything. What has to wait for vigild's socket, and nix-daemon's,
     # is a one-shot service of its own.
-    if ($env.CONTAINER_HEADLESS? | default "0") == "1" {
+    if ${headlessCondition} {
         r#'${socketPermissionsScript}'# | save --force /run/vigil/socket-permissions.nu
         "services:\n  socket-permissions:\n    summary: open vigild's and nix-daemon's sockets to the container's user\n    command: /bin/nu /run/vigil/socket-permissions.nu\n    startup: enabled\n    on-success: ignore\n    on-failure: ignore\n"
             | save --force /run/vigil/layers/010-socket-permissions.yaml
         print " • Headless ......... vigild is PID 1; log in over SSH"
         exec /bin/vigild --layers-dir /run/vigil/layers --socket /run/vigil/vigild.sock
     }
+  '' + lib.optionalString (launch == "interactive") ''
 
     # Interactive: vigild in the background, the shell in front. PID 1 is the shell, which does not wait on a process it
     # did not start, so --reaper makes vigild the subreaper for everything beneath it (the services, and every SSH session
@@ -621,12 +731,18 @@ let
 
     load-env $session_env
 
-    if $dev_user.user != "root" {
-        exec chroot --userspec $"($dev_user.uid):($dev_user.gid)" / ${shellBin} -l
+    if $session.user != "root" {
+        exec chroot --userspec $"($session.uid):($session.gid)" / ${shellBin} -l
     } else {
         exec ${shellBin}
     }
   '';
+
+  phaseLaunch =
+    phaseWriteLayer
+    + (if launch == "system" then phaseLaunchSystem
+       else if launch == "interactive" || launch == "headless" then phaseLaunchSession
+       else throw "entrypoint: unknown launch '${launch}'");
 
 in
   pkgs.writeTextFile {
@@ -636,11 +752,12 @@ in
     text        =
       phasePreamble
       + phaseStorePathExports
-      + phaseUserCreation
+      + phaseBoot
+      + phaseSession
       + phaseAiSetup
       + phaseNixDaemon
       + phaseSftpSymlink
       + phaseCargoCache
       + phaseBanner
-      + phaseVigilExec;
+      + phaseLaunch;
   }

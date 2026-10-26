@@ -179,13 +179,51 @@ Layers are composed left to right. `Core` must always be first.
 
 ## Container Modes
 
-| Mode | Entrypoint | Shell | Nix daemon |
-|------|------------|-------|------------|
-| `Dev` | User creation → interactive shell | Fish or Nushell | Yes |
-| `CI` | Pipeline runner → exit | None | Yes |
-| `Pipeline` | Pipeline runner → exit | None | Yes |
-| `Agent` | Agent supervisor (long-running) | None | Optional |
-| `Minimal` | Exec named binary directly | None | No |
+| Mode | PID 1 | Session | vigild runs | Nix daemon |
+|------|-------|---------|-------------|------------|
+| `Dev` | the shell (vigild in the background); vigild when headless | the user from `CREATE_USER`/`CREATE_UID`/`CREATE_GID`, else root | nix-daemon, dropbear | Yes |
+| `InfraAgent` | the shell; vigild when headless | root | the agent supervisor (its exit ends the container), dropbear | Optional |
+| `AIAgent` | the shell; vigild when headless | the user from the environment, else root | the agent supervisor (restarted), dropbear | Optional |
+| `System` | vigild | none | the config's `services` | No |
+| `Minimal` | the named binary, directly | — | — | No |
+
+`CONTAINER_HEADLESS=1` at run time makes a `Dev`, `InfraAgent` or `AIAgent` container headless: vigild is PID 1, and the shell is reached by a login over SSH.
+
+## Startup and Services
+
+How a non-minimal container starts is `startup`, in three independent parts. `startup = None` takes the mode's own, as in the table above.
+
+```dhall
+startup = Some
+  { session = Lib.Session.None          -- None | FromEnv SessionFallback | Fixed { name, uid, gid }
+  , boot =                              -- done once, at each start, before anything runs
+    [ Lib.BootStep.DelegateCgroups      -- move to /init.scope, hand the cgroup controllers down
+    , Lib.BootStep.Sysctls "/etc/sysctl.d/99-node.conf"
+    , Lib.BootStep.NftRuleset "/etc/nftables/node.nft"
+    , Lib.BootStep.Script { name = "prepare", command = "/bin/prepare-node", required = True }
+    ]
+  , launch = Lib.Launch.System          -- Interactive { allowHeadless } | Headless | System
+  }
+```
+
+- **session**: `None` creates no user; a shell or a login is root, with home `/root`. `FromEnv Root` creates the user `CREATE_USER`/`CREATE_UID`/`CREATE_GID` name, and runs as root when they are not set; `FromEnv Refuse` does not start without them. `Fixed` creates the user it names.
+- **boot**: `DelegateCgroups` is for a container that runs containers (a Kubernetes node): it needs `--cgroupns=private` and a writable cgroup filesystem (`--privileged`), and fails the start without them. A sysctl or a ruleset that does not apply is a warning; a `Script` fails the start when `required`.
+- **launch**: `System` runs vigild as PID 1 and sets nothing up for a shell or a login.
+
+`services` are vigild services, written into its layer beside the mode's own:
+
+```dhall
+services =
+  [ Lib.defaults.defaultService //
+      { name = "etcd", summary = "etcd", command = "/bin/etcd-run", killDelay = Some "10s" }
+  , Lib.defaults.defaultService //
+      { name = "kube-apiserver", summary = "API server", command = "/bin/apiserver-run"
+      , after = [ "etcd" ]
+      }
+  ]
+```
+
+A service starts once those it is `after` are running, not once they are done: one that needs another's output waits for it itself. `onSuccess`/`onFailure` are `Restart`, `Ignore`, `Shutdown`, `SuccessShutdown` or `FailureShutdown`; `logs` is `Enabled` (vigild's buffer and its stdout), `Disabled` (the buffer only: `vigil logs`) or `Passthrough`. `smoke-test-system.dhall` is a complete `System` container.
 
 ---
 
@@ -246,6 +284,8 @@ nix-container-lib/
   Justfile                # render-smoke-test, check-dhall, render-all
   smoke-test.dhall        # Smoke test Dhall config
   smoke-test.nix          # Pre-rendered smoke test (committed)
+  smoke-test-system.dhall # A System-mode container: boot steps, services
+  smoke-test-system.nix   # Pre-rendered (committed)
   dhall/
     types.dhall           # All type definitions
     defaults.dhall        # Opinionated starting points
@@ -256,7 +296,7 @@ nix-container-lib/
     packages.nix          # Package sets by layer
     identity.nix          # Linux filesystem spine
     nix-infra.nix         # Nix-in-Nix infrastructure
-    entrypoint.nix        # start.sh generation
+    entrypoint.nix        # start.nu generation: boot steps, session, launch
     shell.nix             # Shell dispatcher
     shell-fish.nix        # Fish shell environment
     shell-nu.nix          # Nushell environment
