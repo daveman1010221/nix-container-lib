@@ -105,7 +105,10 @@ let
               else throw "from-dhall: unsupported interactive shell '${payload.shell}'. Use /bin/fish or /bin/nu";
           };
 
-      allPkgs = layerPkgs ++ shellPkgs;
+      # What start.nu runs on, in every non-minimal container, so that one need not take the Core layer for it.
+      runtimePkgs = lib.optionals (mode != "minimal") packageSets.startRuntime;
+
+      allPkgs = layerPkgs ++ shellPkgs ++ runtimePkgs;
 
       # Deduplicate by store path
       seen = builtins.foldl'

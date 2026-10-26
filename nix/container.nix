@@ -14,6 +14,11 @@
 #   configNixPath    — path to the pre-rendered Nix file (from dhall-to-nix)
 #   extraDerivations — optional list of additional derivations to add to the
 #                      image's bin environment (e.g. a custom entrypoint binary)
+#   extraCommands    — optional shell run in the image root at assembly (dockerTools
+#                      extraCommands): files the image carries as files, not as
+#                      store symlinks (configuration a volume may copy out of it)
+#   extraConfig      — optional OCI config fields, merged over the defaults
+#                      (Labels, Volumes, StopSignal, ...)
 #
 # AUTHORING WORKFLOW
 # ------------------
@@ -53,6 +58,8 @@
 , inputs
 , configNixPath
 , extraDerivations ? []
+, extraCommands ? ""
+, extraConfig ? {}
 }:
 
 let
@@ -169,7 +176,7 @@ let
   };
 
   nixDbRegistration =
-    if isMinimal then null
+    if !nixInfra.withNix then null
     else pkgs.runCommand "nix-db-registration" {} ''
       mkdir -p $out/nix/var/nix/db
       export NIX_REMOTE=local?root=$out
@@ -177,7 +184,7 @@ let
     '';
 
   gcRoots =
-    if isMinimal then null
+    if !nixInfra.withNix then null
     else import ./gc-roots.nix { inherit pkgs allContents; };
 
   # ---------------------------------------------------------------------------
@@ -246,7 +253,7 @@ let
 
     contents =
       allContents
-      ++ lib.optionals (!isMinimal) [
+      ++ lib.optionals nixInfra.withNix [
            nixDbRegistration
            gcRoots
          ];
@@ -259,9 +266,9 @@ let
       install -m 644 ${identity.etcOsRelease}/etc/os-release etc/os-release
       install -m 640 ${identity.etcShadow}/etc/shadow       etc/shadow
       install -m 640 ${identity.etcGshadow}/etc/gshadow     etc/gshadow
-    '';
+    '' + extraCommands;
 
-    config = {
+    config = lib.recursiveUpdate {
       Cmd        = containerCmd;
       User       = containerUser;
       WorkingDir = "/workspace";
@@ -273,7 +280,7 @@ let
         "org.opencontainers.image.vendor"  = "nix-container-lib";
         "org.opencontainers.image.sbom"    = "/_manifest/spdx.json";
       };
-    };
+    } extraConfig;
   };
 
   # ---------------------------------------------------------------------------

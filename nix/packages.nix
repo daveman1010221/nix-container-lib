@@ -55,6 +55,12 @@ in
   ++ lib.optional (vigild != null) vigild;
 
   # ---------------------------------------------------------------------------
+  # Start runtime: what start.nu itself runs on (nushell) and execs (vigild).
+  # Every non-minimal container has it, whatever its layers (from-dhall.nix).
+  # ---------------------------------------------------------------------------
+  startRuntime = [ pkgs.nushell ] ++ lib.optional (vigild != null) vigild;
+
+  # ---------------------------------------------------------------------------
   # CI
   # ---------------------------------------------------------------------------
   ci = with pkgs; [

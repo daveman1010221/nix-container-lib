@@ -28,6 +28,9 @@
 let
   lib = pkgs.lib;
   isMinimal = cfg.mode == "minimal";
+  # Nix in the container (nix.conf, the nixpkgs registry): not in a minimal one, nor in a System one, which runs only its
+  # services. The registry alone puts the whole nixpkgs source in the image.
+  withNix = !isMinimal && cfg.mode != "system";
 
   # ---------------------------------------------------------------------------
   # Dynamic linker stub (always included)
@@ -67,7 +70,7 @@ let
   # Nix registry (non-minimal only)
   # ---------------------------------------------------------------------------
   nixRegistry =
-    if isMinimal then null
+    if !withNix then null
     else pkgs.writeTextFile {
       name        = "registry.json";
       destination = "/etc/nix/registry.json";
@@ -84,7 +87,7 @@ let
   # nix.conf (non-minimal only)
   # ---------------------------------------------------------------------------
   nixConfig =
-    if isMinimal then null
+    if !withNix then null
     else pkgs.writeTextFile {
       name        = "nix.conf";
       destination = "/etc/nix/nix.conf";
@@ -116,17 +119,12 @@ let
   configFiles =
     if isMinimal
     then []
-    else [
-      nixConfig
-      nixRegistry
-      containerPolicy
-    ];
+    else lib.optionals withNix [ nixConfig nixRegistry ] ++ [ containerPolicy ];
 
 in
 {
   inherit ldLinker usrBinEnv fhsDirs configFiles;
   # Expose individual items for non-minimal consumers that reference them
-  nixRegistry    = if isMinimal then null else nixRegistry;
-  nixConfig      = if isMinimal then null else nixConfig;
+  inherit withNix nixRegistry nixConfig;
   containerPolicy = if isMinimal then null else containerPolicy;
 }
