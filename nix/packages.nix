@@ -55,6 +55,24 @@ in
   ++ lib.optional (vigild != null) vigild;
 
   # ---------------------------------------------------------------------------
+  # CI
+  # ---------------------------------------------------------------------------
+  ci = with pkgs; [
+    curl
+    dhall
+    dhall-json
+    dhall-yaml
+    envsubst
+    git
+    grype
+    oras
+    skopeo
+    sops
+    syft
+    vulnix
+  ];
+
+  # ---------------------------------------------------------------------------
   # Dev
   # vigil CLI included for interactive control of supervised services.
   # ---------------------------------------------------------------------------

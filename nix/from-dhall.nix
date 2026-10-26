@@ -61,6 +61,7 @@ let
     sentinel = layer {
       Micro          = "Micro";
       Core           = "Core";
+      CI             = "CI";
       InteractiveDev = "InteractiveDev";
       RustToolchain  = "RustToolchain";
       PythonToolchain = "PythonToolchain";
@@ -71,6 +72,7 @@ let
   in
     if sentinel == "Micro"           then packageSets.micro
     else if sentinel == "Core"       then packageSets.core
+    else if sentinel == "CI"         then packageSets.ci
     else if sentinel == "InteractiveDev"  then packageSets.interactiveDev
     else if sentinel == "RustToolchain"   then packageSets.rustToolchain
     else if sentinel == "PythonToolchain" then packageSets.pythonToolchain
@@ -310,6 +312,7 @@ let
     let
       hasBase = layer: layer {
         Micro = true; Core = true;
+        CI = false; InteractiveDev = false; RustToolchain = false;
         PythonToolchain = false; NodeToolchain = false; Infrastructure = false;
         Custom = _: false;
       };
@@ -337,6 +340,7 @@ let
   hasToolchain = builtins.any (layer: layer {
     Micro          = false;
     Core           = false;
+    CI             = false;
     InteractiveDev = false;
     RustToolchain  = true;
     PythonToolchain = true;
