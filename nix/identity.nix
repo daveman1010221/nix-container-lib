@@ -11,6 +11,11 @@
 #   result.etcGshadow — /etc/gshadow
 #   result.etcShells  — /etc/shells (derived from shell config, not hardcoded)
 #   result.etcOsRelease — /etc/os-release
+#   result.etcIana    — /etc/protocols and /etc/services (iana-etc): protocol and
+#                       port names, which libc resolves from them (getprotobyname,
+#                       getservbyname). Without /etc/protocols, nft lists a protocol
+#                       as a number (6, not tcp), which broke kube-proxy's view of
+#                       its own maps in nix-usernetes.
 #   result.shSymlink  — /bin/sh → bash symlink (when bash is the root shell)
 
 { pkgs
@@ -123,6 +128,7 @@ let
   etcGshadow   = pkgs.writeTextDir "etc/gshadow"    gshadowText;
   etcShells    = pkgs.writeTextDir "etc/shells"     shellsText;
   etcOsRelease = pkgs.writeTextDir "etc/os-release" osReleaseText;
+  etcIana      = pkgs.iana-etc;
 
   rootHome = pkgs.runCommand "root-home" {} ''
     mkdir -p $out/root
@@ -131,10 +137,10 @@ let
 
 in
 {
-  inherit etcPasswd etcShadow etcGroup etcGshadow etcShells etcOsRelease rootHome;
+  inherit etcPasswd etcShadow etcGroup etcGshadow etcShells etcOsRelease etcIana rootHome;
   inherit shSymlink;
 
   baseInfo =
-    [ etcPasswd etcShadow etcGroup etcGshadow etcShells etcOsRelease rootHome ]
+    [ etcPasswd etcShadow etcGroup etcGshadow etcShells etcOsRelease etcIana rootHome ]
     ++ lib.optional (shSymlink != null) shSymlink;
 }

@@ -266,6 +266,8 @@ let
       install -m 644 ${identity.etcGroup}/etc/group         etc/group
       install -m 644 ${identity.etcShells}/etc/shells       etc/shells
       install -m 644 ${identity.etcOsRelease}/etc/os-release etc/os-release
+      install -m 644 ${identity.etcIana}/etc/protocols      etc/protocols
+      install -m 644 ${identity.etcIana}/etc/services       etc/services
       install -m 640 ${identity.etcShadow}/etc/shadow       etc/shadow
       install -m 640 ${identity.etcGshadow}/etc/gshadow     etc/gshadow
     '' + extraCommands;
