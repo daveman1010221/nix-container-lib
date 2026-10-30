@@ -31,11 +31,21 @@ let
   # ---------------------------------------------------------------------------
   # PackageRef resolution
   # ---------------------------------------------------------------------------
+  # Packages the library builds its own way when a config names them from nixpkgs. dropbear with AES-GCM, which its
+  # default build leaves out (DROPBEAR_ENABLE_GCM_MODE 0; its options are #ifndef-guarded, so a -D sets one): a client
+  # under a FIPS policy (a managed Mac's /etc/ssh/ssh_config.d) takes only AES-GCM ciphers, and refused every
+  # connection to chacha20-poly1305 and AES-CTR.
+  nixpkgsOverrides = {
+    dropbear = pkgs.dropbear.overrideAttrs (old: {
+      env = (old.env or { }) // { CFLAGS = (old.env.CFLAGS or "") + " -DDROPBEAR_ENABLE_GCM_MODE=1"; };
+    });
+  };
+
   resolvePackageRef = ref:
     let
       source =
         if ref.flakeInput == null
-        then pkgs
+        then pkgs // nixpkgsOverrides
         else
           let inputName = ref.flakeInput;
           in
