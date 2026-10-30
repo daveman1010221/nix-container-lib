@@ -677,17 +677,26 @@ let
     # The environment a shell here gets, for one that starts over SSH: dropbear gives a session a fresh environment, so
     # without this it would miss everything above (PATH's coreutils, CARGO_TARGET_DIR, the toolchain's paths) and whatever
     # the container was started with. /etc/fish/shellInit.fish sources it for a session over SSH. Who the session is
-    # (HOME, USER, ...) and the shell's own state are left to the session.
+    # (HOME, USER, ...) and the shell's own state are left to the session. The session user's XDG directories are set only
+    # for a shell with that user's HOME (their login over SSH): root sourcing the file (kubectl exec, podman exec) keeps its
+    # own, so its tools (Nix's cache, among them) do not write into the user's home.
     let session_own = [HOME USER LOGNAME SHELL PWD OLDPWD SHLVL TERM COLUMNS LINES _ FILE_PWD CURRENT_FILE LAST_EXIT_CODE CMD_DURATION_MS config ENV_CONVERSIONS TRANSIENT_PROMPT_COMMAND]
+    let session_dirs = ($session_env | columns | where {|n| $n | str starts-with "XDG_" })
     with-env $session_env {
         $env | transpose name value
-            | where {|e| $e.name not-in $session_own and not ($e.name | str starts-with "PROMPT_") and not ($e.name | str starts-with "NU_") }
+            | where {|e| $e.name not-in $session_own and $e.name not-in $session_dirs and not ($e.name | str starts-with "PROMPT_") and not ($e.name | str starts-with "NU_") }
             | each {|e|
                 let kind = ($e.value | describe)
                 let text = if ($kind | str starts-with "list") { $e.value | str join ":" } else if $kind == "string" { $e.value } else { null }
                 if $text == null { null } else { $"set -gx ($e.name) '($text | str replace --all '\' '\\' | str replace --all "'" "\\'")'" }
             }
-            | compact | str join "\n" | save --force /run/container-env.fish
+            | compact
+            | append (if ($session_dirs | is-empty) { [] } else {
+                [$"if test \"$HOME\" = '($session.home)'"]
+                    | append ($session_dirs | each {|n| $"    set -gx ($n) '($session_env | get $n)'" })
+                    | append "end"
+            })
+            | str join "\n" | save --force /run/container-env.fish
     }
     ^chmod 644 /run/container-env.fish
 
