@@ -7,6 +7,7 @@ in if !hasBin "dropbear" || !hasBin "dropbearkey" then null
          set auth_keys $ssh_dir/authorized_keys
          set rsa_key $ssh_dir/dropbear_rsa_host_key
          set ed25519_key $ssh_dir/dropbear_ed25519_host_key
+         set ecdsa_key $ssh_dir/dropbear_ecdsa_host_key
 
          if not test -f /workspace/authorized_keys
              echo "❌ /workspace/authorized_keys not found. Please copy your public key into the container."
@@ -29,7 +30,13 @@ in if !hasBin "dropbear" || !hasBin "dropbearkey" then null
              dropbearkey -t ed25519 -f $ed25519_key > /dev/null
          end
 
+         # For a client under a FIPS policy, which takes neither ed25519 nor rsa-sha2-256 host keys.
+         if not test -f $ecdsa_key
+             echo "🔑 Generating ECDSA host key..."
+             dropbearkey -t ecdsa -s 256 -f $ecdsa_key > /dev/null
+         end
+
          echo "🚀 Starting Dropbear on 0.0.0.0:2223"
-         dropbear -F -E -e -a -s -r $rsa_key -r $ed25519_key -p 0.0.0.0:2223 &
+         dropbear -F -E -e -a -s -r $rsa_key -r $ed25519_key -r $ecdsa_key -p 0.0.0.0:2223 &
      end
    ''

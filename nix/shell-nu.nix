@@ -454,6 +454,7 @@ let
       let auth_keys = ($ssh_dir | path join "authorized_keys")
       let rsa_key = ($ssh_dir | path join "dropbear_rsa_host_key")
       let ed25519_key = ($ssh_dir | path join "dropbear_ed25519_host_key")
+      let ecdsa_key = ($ssh_dir | path join "dropbear_ecdsa_host_key")
 
       if not ("/workspace/authorized_keys" | path exists) {
         print "❌ /workspace/authorized_keys not found. Copy your public key into the container."
@@ -474,9 +475,14 @@ let
         print "🔑 Generating ED25519 host key..."
         ^dropbearkey -t ed25519 -f $ed25519_key | ignore
       }
+      # For a client under a FIPS policy, which takes neither ed25519 nor rsa-sha2-256 host keys.
+      if not ($ecdsa_key | path exists) {
+        print "🔑 Generating ECDSA host key..."
+        ^dropbearkey -t ecdsa -s 256 -f $ecdsa_key | ignore
+      }
 
       print "🚀 Starting Dropbear on 0.0.0.0:2223"
-      ^dropbear -F -E -e -a -s -r $rsa_key -r $ed25519_key -p 0.0.0.0:2223 &
+      ^dropbear -F -E -e -a -s -r $rsa_key -r $ed25519_key -r $ecdsa_key -p 0.0.0.0:2223 &
     }
 
     def ssh-stop [] {

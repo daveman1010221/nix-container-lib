@@ -552,6 +552,7 @@ let
           "dropbear -F -E -e -a -s"
           "-r SESSION_HOME/.ssh/dropbear_rsa_host_key"
           "-r SESSION_HOME/.ssh/dropbear_ed25519_host_key"
+          "-r SESSION_HOME/.ssh/dropbear_ecdsa_host_key"
           "-p 0.0.0.0:${toString cfg.ssh.port}"
         ];
         startup = "disabled";
@@ -581,10 +582,13 @@ let
     if cfg.ssh != null then
       let port = toString cfg.ssh.port;
       in ''
-        # Always generate host keys so dropbear can be started manually if needed
+        # Always generate host keys so dropbear can be started manually if needed. ECDSA (P-256) as well as RSA and
+        # ed25519: a client under a FIPS policy (a managed Mac's /etc/ssh/ssh_config.d) takes neither ssh-ed25519 nor
+        # rsa-sha2-256 as a host key, and refused every login before it.
         ^install -d -m 700 $"($session.home)/.ssh"
         let rsa_key     = $"($session.home)/.ssh/dropbear_rsa_host_key"
         let ed25519_key = $"($session.home)/.ssh/dropbear_ed25519_host_key"
+        let ecdsa_key   = $"($session.home)/.ssh/dropbear_ecdsa_host_key"
 
         if not ($rsa_key | path exists) {
             ^dropbearkey -t rsa -f $rsa_key
@@ -592,8 +596,11 @@ let
         if not ($ed25519_key | path exists) {
             ^dropbearkey -t ed25519 -f $ed25519_key
         }
-        ^chown $"($session.uid):($session.gid)" $rsa_key $ed25519_key
-        ^chmod 600 $rsa_key $ed25519_key
+        if not ($ecdsa_key | path exists) {
+            ^dropbearkey -t ecdsa -s 256 -f $ecdsa_key
+        }
+        ^chown $"($session.uid):($session.gid)" $rsa_key $ed25519_key $ecdsa_key
+        ^chmod 600 $rsa_key $ed25519_key $ecdsa_key
 
         if ($env.DROPBEAR_ENABLE? | default "0") == "1" {
             let auth_keys = $"($session.home)/.ssh/authorized_keys"
