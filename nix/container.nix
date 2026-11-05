@@ -192,10 +192,34 @@ let
   # ---------------------------------------------------------------------------
   # OCI User field
   # ---------------------------------------------------------------------------
+  # A rootless session starts as its own user (types.dhall, Session.Rootless); otherwise staticUid, else root.
+  session = (cfg.startup or { session = { kind = "none"; }; }).session;
+  rootless = session.kind == "rootless";
+
   containerUser =
-    if cfg.staticUid != null && cfg.staticGid != null
+    if rootless
+    then "${toString session.user.uid}:${toString session.user.gid}"
+    else if cfg.staticUid != null && cfg.staticGid != null
     then "${toString cfg.staticUid}:${toString cfg.staticGid}"
     else "0:0";
+
+  # A rootless session's home, made at build and owned by its user, mode 700, so that dropbear's check of the path to
+  # authorized_keys (every component up to the home: owned by the user or root, not writable by group or others) passes
+  # whatever the mounts are. What has to be writable points out of it: ~/.ssh at /run/ssh (made at start, mode 700), and
+  # ~/.config, ~/.cache and ~/.local into ~/work, the mount point of the work volume. Run under fakeroot, so the ownership
+  # is in the layer.
+  rootlessHome = lib.optionalString rootless (
+    let n = session.user.name;
+        owner = "${toString session.user.uid}:${toString session.user.gid}";
+    in ''
+      mkdir -p home/${n}/work
+      ln -s /run/ssh       home/${n}/.ssh
+      ln -s work/.config   home/${n}/.config
+      ln -s work/.cache    home/${n}/.cache
+      ln -s work/.local    home/${n}/.local
+      chown -h -R ${owner} home/${n}
+      chmod 700 home/${n}
+    '');
 
   # ---------------------------------------------------------------------------
   # OCI Cmd
@@ -271,6 +295,8 @@ let
       install -m 640 ${identity.etcShadow}/etc/shadow       etc/shadow
       install -m 640 ${identity.etcGshadow}/etc/gshadow     etc/gshadow
     '' + extraCommands;
+
+    fakeRootCommands = rootlessHome;
 
     config = lib.recursiveUpdate {
       Cmd        = containerCmd;

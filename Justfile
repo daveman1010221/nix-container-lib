@@ -22,6 +22,10 @@ render-smoke-test:
 render-smoke-test-system:
     dhall-to-nix < smoke-test-system.dhall > smoke-test-system.nix
 
+# Render smoke-test-rootless.dhall → smoke-test-rootless.nix
+render-smoke-test-rootless:
+    dhall-to-nix < smoke-test-rootless.dhall > smoke-test-rootless.nix
+
 # Type-check all .dhall files without rendering
 check-dhall:
     @echo "Type-checking dhall/types.dhall..."
@@ -34,10 +38,12 @@ check-dhall:
     dhall type < smoke-test.dhall
     @echo "Type-checking smoke-test-system.dhall..."
     dhall type < smoke-test-system.dhall
+    @echo "Type-checking smoke-test-rootless.dhall..."
+    dhall type < smoke-test-rootless.dhall
     @echo "All Dhall files type-check OK."
 
 # Render all .dhall files that have a companion .nix target
-render-all: render-smoke-test render-smoke-test-system
+render-all: render-smoke-test render-smoke-test-system render-smoke-test-rootless
     @echo "All Dhall files rendered."
 
 # Build the smoke test container image
@@ -47,6 +53,10 @@ smoke-test:
 # Build the System-mode smoke test image
 smoke-test-system:
     nix build .#smokeTestSystem -L
+
+# Build the rootless smoke test image
+smoke-test-rootless:
+    nix build .#smokeTestRootless -L
 
 # Run nix flake check
 check:

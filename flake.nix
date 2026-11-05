@@ -77,6 +77,13 @@
           configNixPath = ./smoke-test-system.nix;
         }).image;
 
+        # A Dev container with a rootless session: started as its own user, no root at start (smoke-test-rootless.dhall).
+        legacyPackages.smokeTestRootless = (import ./nix/container.nix {
+          inherit system pkgs;
+          inputs      = { inherit uutils-micro vigil-rs; };
+          configNixPath = ./smoke-test-rootless.nix;
+        }).image;
+
         devShells.default = pkgs.mkShell {
           name = "nix-container-lib-dev";
 
