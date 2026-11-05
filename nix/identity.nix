@@ -57,10 +57,24 @@ let
   # ---------------------------------------------------------------------------
   # User database — root only at build time
   # ---------------------------------------------------------------------------
-  passwdText    = "root:x:0:0::/root:${rootShell}\n";
-  shadowText    = "root:!x:::::::\n";
-  groupText     = "root:x:0:\n";
-  gshadowText   = "root:x::\n";
+  # A rootless session's user is made here, at build (types.dhall, Session.Rootless): the container starts as it and can
+  # create no one. Its login shell is the configured shell, which /etc/shells lists; dropbear refuses a login whose shell is
+  # not listed. A `tty` group (5, the devpts default) lets dropbear give a terminal to the user's group without the chown a
+  # non-root process cannot make.
+  session = (cfg.startup or { session = { kind = "none"; }; }).session;
+  rootless = session.kind == "rootless";
+  sessionShell = if registeredShells != [] then builtins.head registeredShells else "${pkgs.bash}/bin/bash";
+  rootlessPasswd  = lib.optionalString rootless
+    "${session.user.name}:x:${toString session.user.uid}:${toString session.user.gid}::/home/${session.user.name}:${sessionShell}\n";
+  rootlessShadow  = lib.optionalString rootless "${session.user.name}:!x:::::::\n";
+  rootlessGroup   = lib.optionalString rootless
+    "${session.user.name}:x:${toString session.user.gid}:\ntty:x:5:${session.user.name}\n";
+  rootlessGshadow = lib.optionalString rootless "${session.user.name}:!::\ntty:!::${session.user.name}\n";
+
+  passwdText    = "root:x:0:0::/root:${rootShell}\n" + rootlessPasswd;
+  shadowText    = "root:!x:::::::\n" + rootlessShadow;
+  groupText     = "root:x:0:\n" + rootlessGroup;
+  gshadowText   = "root:x::\n" + rootlessGshadow;
 
   # ---------------------------------------------------------------------------
   # Registered shells

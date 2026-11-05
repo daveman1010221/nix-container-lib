@@ -317,7 +317,7 @@ let
   # Startup translation
   #
   # Normalized for entrypoint.nix:
-  #   session = { kind = "none" | "from-env" | "fixed"; fallback = "root" | "refuse"; user = { name; uid; gid; } | null; }
+  #   session = { kind = "none" | "from-env" | "fixed" | "rootless"; fallback = "root" | "refuse"; user = { name; uid; gid; } | null; }
   #   boot    = [ { kind = "delegate-cgroups"; } | { kind = "sysctls"; path; } | { kind = "nft-ruleset"; path; }
   #             | { kind = "script"; name; command; required; } ]
   #   launch  = { kind = "interactive" | "headless" | "system"; allowHeadless; }
@@ -332,6 +332,7 @@ let
       user = null;
     };
     Fixed   = user: { kind = "fixed"; fallback = "root"; user = { inherit (user) name uid gid; }; };
+    Rootless = user: { kind = "rootless"; fallback = "refuse"; user = { inherit (user) name uid gid; }; };
   };
 
   resolveBootStep = step: step {
@@ -448,9 +449,20 @@ let
       then throw "from-dhall: ContainerConfig '${cfg.name}': a service is ordered after one that does not exist: ${lib.concatStringsSep ", " unknownAfter}"
       else true;
 
-  # A container that runs as a non-root user (staticUid) cannot create one at start.
+  # A container that runs as a non-root user (staticUid) cannot create one at start. A rootless session is made at build and
+  # starts as its own user, so it needs no root at start and has none: no boot steps (they need privilege), no nix-daemon
+  # (it runs as root), and a staticUid, if given, that is its own.
   sessionAssertion =
-    if resolvedStartup.session.kind != "none" && resolvedStaticUid != null && resolvedStaticUid != 0
+    let s = resolvedStartup.session; in
+    if s.kind == "rootless" then
+      if resolvedStaticUid != null && resolvedStaticUid != s.user.uid
+      then throw "from-dhall: ContainerConfig '${cfg.name}': a rootless session runs as ${toString s.user.uid}; staticUid ${toString resolvedStaticUid} is another user. Leave staticUid unset."
+      else if resolvedStartup.boot != []
+      then throw "from-dhall: ContainerConfig '${cfg.name}': a rootless session has no root at start, and boot steps need it. Use boot = [] or another session."
+      else if resolvedNix.enableDaemon
+      then throw "from-dhall: ContainerConfig '${cfg.name}': a rootless session cannot run nix-daemon, which runs as root. Set nix.enableDaemon = False."
+      else true
+    else if s.kind != "none" && resolvedStaticUid != null && resolvedStaticUid != 0
     then throw "from-dhall: ContainerConfig '${cfg.name}': a session user is created at start, as root; with staticUid the container does not start as root. Use session = Session.None."
     else true;
 

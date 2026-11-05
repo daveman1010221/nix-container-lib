@@ -175,6 +175,17 @@ let Session =
       --   start (podman --userns=keep-id passes the host user's).
       | Fixed : SessionUser
       -- ^ This user, created at start.
+      | Rootless : SessionUser
+      -- ^ This user, made at build: in /etc/passwd and /etc/group, with a
+      --   home it owns (mode 700). The image's User is this user, and the
+      --   container starts as it, with no step that needs root: nothing is
+      --   created, chowned or written outside /run, /tmp and the home's work
+      --   directory. For a container held to non-root, no capabilities and a
+      --   read-only root filesystem (a Kubernetes pod with runAsNonRoot).
+      --   Writable areas are mounted: /run, /tmp, and ~/work, which ~/.config,
+      --   ~/.cache and ~/.local point into. ~/.ssh points at /run/ssh, made at
+      --   start (mode 700), so dropbear accepts the keys there whatever the
+      --   permissions of the mounts. No nix-daemon and no boot steps.
       >
 
 let BootStep =

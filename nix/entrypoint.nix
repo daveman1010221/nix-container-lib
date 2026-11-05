@@ -6,7 +6,8 @@
 #
 # How the container starts is cfg.startup (from-dhall.nix), in three parts:
 #   session — who a shell or a login runs as: no one but root ("none"), the user
-#             CREATE_USER/UID/GID name ("from-env"), or one fixed at build ("fixed")
+#             CREATE_USER/UID/GID name ("from-env"), one created at start ("fixed"),
+#             or one made at build that the container starts as ("rootless")
 #   boot    — steps done once, at each start, before anything else runs
 #   launch  — what PID 1 is: the shell, with vigild in the background
 #             ("interactive"), or vigild ("headless", "system")
@@ -51,6 +52,7 @@ let
   nuBin = "${pkgs.nushell}/bin/nu";
 
   startup = cfg.startup;
+  rootless = startup.session.kind == "rootless";
   launch  = startup.launch.kind;
 
   # ---------------------------------------------------------------------------
@@ -317,6 +319,21 @@ let
           { user: $env.CREATE_USER, uid: ($env.CREATE_UID | into int), gid: ($env.CREATE_GID | into int), home: $"/home/($env.CREATE_USER)" }
       } else {
           ${rootSession}
+      }
+    ''
+    else if s.kind == "rootless" then ''
+      # Rootless (types.dhall, Session.Rootless): the user was made at build and the container started as it. Nothing is
+      # created or chowned; only what is the user's to make: /run/ssh, where ~/.ssh points (mode 700, so dropbear accepts
+      # the keys there), and the directories under ~/work that ~/.config, ~/.cache and ~/.local point into.
+      let session = { user: "${s.user.name}", uid: ${toString s.user.uid}, gid: ${toString s.user.gid}, home: "/home/${s.user.name}" }
+      if (^id -u | into int) != $session.uid {
+          die $"a rootless session runs as ($session.uid), and this container runs as (^id -u): start it as its image's User"
+      }
+      ^install -d -m 700 /run/ssh
+      try {
+          for d in [".config" ".cache" ".local/share"] { mkdir $"($session.home)/work/($d)" }
+      } catch {
+          warn $"($session.home)/work is not writable: mount the work volume there, or ~/.config, ~/.cache and ~/.local stay unwritable"
       }
     ''
     else throw "entrypoint: unknown session kind '${s.kind}'";
@@ -599,7 +616,7 @@ let
         if not ($ecdsa_key | path exists) {
             ^dropbearkey -t ecdsa -s 256 -f $ecdsa_key
         }
-        ^chown $"($session.uid):($session.gid)" $rsa_key $ed25519_key $ecdsa_key
+        ${lib.optionalString (!rootless) ''^chown $"($session.uid):($session.gid)" $rsa_key $ed25519_key $ecdsa_key''}
         ^chmod 600 $rsa_key $ed25519_key $ecdsa_key
 
         if ($env.DROPBEAR_ENABLE? | default "0") == "1" {
@@ -608,7 +625,7 @@ let
             if not ($authorized_keys_b64 | is-empty) {
                 $authorized_keys_b64 | ^base64 -d | save --force $auth_keys
                 ^chmod 600 $auth_keys
-                ^chown $"($session.uid):($session.gid)" $auth_keys
+                ${lib.optionalString (!rootless) ''^chown $"($session.uid):($session.gid)" $auth_keys''}
                 "services:\n  dropbear:\n    startup: enabled\n"
                     | save --force /run/vigil/layers/002-dropbear-enable.yaml
                 print " • SSH .............. dropbear starting on port ${port}"
@@ -747,12 +764,16 @@ let
 
     load-env $session_env
 
+  '' + (if rootless then ''
+    # Rootless: already the session's user, so the shell is exec'd as it is (chroot --userspec needs root).
+    exec ${shellBin} -l
+  '' else ''
     if $session.user != "root" {
         exec chroot --userspec $"($session.uid):($session.gid)" / ${shellBin} -l
     } else {
         exec ${shellBin}
     }
-  '';
+  '');
 
   phaseLaunch =
     phaseWriteLayer
@@ -770,10 +791,12 @@ in
       + phaseStorePathExports
       + phaseBoot
       + phaseSession
-      + phaseAiSetup
-      + phaseNixDaemon
-      + phaseSftpSymlink
-      + phaseCargoCache
+      # A rootless session has no root at start: AI setup (it chowns), nix-daemon and its arch config (root), the SFTP
+      # symlink (it writes /bin) and the cargo cache (it chowns /var/cache) are left out.
+      + lib.optionalString (!rootless) phaseAiSetup
+      + lib.optionalString (!rootless) phaseNixDaemon
+      + lib.optionalString (!rootless) phaseSftpSymlink
+      + lib.optionalString (!rootless) phaseCargoCache
       + phaseBanner
       + phaseLaunch;
   }
