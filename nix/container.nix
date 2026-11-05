@@ -20,6 +20,9 @@
 #   extraConfig      — optional OCI config fields, merged over the defaults
 #                      (Labels, Volumes, StopSignal, ...)
 #   tag              — the image tag (default "latest")
+#   imageName        — the image's name, the reference a runtime knows it by (default the config's name). It may hold a
+#                      registry host ("localhost/agent", as podman names what it builds): store paths, the SBOM and the
+#                      title label keep the config's name, since a store name cannot hold "/".
 #
 # AUTHORING WORKFLOW
 # ------------------
@@ -62,6 +65,7 @@
 , extraCommands ? ""
 , extraConfig ? {}
 , tag ? "latest"
+, imageName ? null
 }:
 
 let
@@ -273,7 +277,7 @@ let
   # OCI image assembly
   # ---------------------------------------------------------------------------
   image = pkgs.dockerTools.buildLayeredImage {
-    name      = cfg.name;
+    name      = if imageName != null then imageName else cfg.name;
     inherit tag;
     maxLayers = if isMinimal then 10 else 20;
 
