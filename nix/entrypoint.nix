@@ -602,22 +602,46 @@ let
         # Always generate host keys so dropbear can be started manually if needed. ECDSA (P-256) as well as RSA and
         # ed25519: a client under a FIPS policy (a managed Mac's /etc/ssh/ssh_config.d) takes neither ssh-ed25519 nor
         # rsa-sha2-256 as a host key, and refused every login before it.
+        #
+        # DROPBEAR_HOST_KEYS_DIR names a directory of host keys kept outside the container (a mounted Secret), in dropbear's own
+        # format, named as below (dropbear_<type>_host_key). Those are copied in and none is generated, so the server's
+        # identity outlives the container; a type the directory lacks is not offered. With no directory, or one holding no
+        # key, they are generated here, as before, and change with every container.
         ^install -d -m 700 $"($session.home)/.ssh"
         let rsa_key     = $"($session.home)/.ssh/dropbear_rsa_host_key"
         let ed25519_key = $"($session.home)/.ssh/dropbear_ed25519_host_key"
         let ecdsa_key   = $"($session.home)/.ssh/dropbear_ecdsa_host_key"
 
-        if not ($rsa_key | path exists) {
-            ^dropbearkey -t rsa -f $rsa_key
+        let keys_dir = ($env.DROPBEAR_HOST_KEYS_DIR? | default "")
+        let kept = if ($keys_dir | is-empty) { [] } else {
+            [$rsa_key $ed25519_key $ecdsa_key] | each {|key|
+                let source = ($keys_dir | path join ($key | path basename))
+                if ($source | path exists) {
+                    ^install -m 600 $source $key
+                    $key
+                }
+            } | compact
         }
-        if not ($ed25519_key | path exists) {
-            ^dropbearkey -t ed25519 -f $ed25519_key
+        if not ($keys_dir | is-empty) and ($kept | is-empty) {
+            warn $"DROPBEAR_HOST_KEYS_DIR is ($keys_dir), and it holds no host key: generating them for this container"
         }
-        if not ($ecdsa_key | path exists) {
-            ^dropbearkey -t ecdsa -s 256 -f $ecdsa_key
+        let made = if ($kept | is-empty) {
+            if not ($rsa_key | path exists) {
+                ^dropbearkey -t rsa -f $rsa_key
+            }
+            if not ($ed25519_key | path exists) {
+                ^dropbearkey -t ed25519 -f $ed25519_key
+            }
+            if not ($ecdsa_key | path exists) {
+                ^dropbearkey -t ecdsa -s 256 -f $ecdsa_key
+            }
+            [$rsa_key $ed25519_key $ecdsa_key]
+        } else {
+            print $" • SSH host keys ... (($kept | length)) kept from ($keys_dir)"
+            $kept
         }
-        ${lib.optionalString (!rootless) ''^chown $"($session.uid):($session.gid)" $rsa_key $ed25519_key $ecdsa_key''}
-        ^chmod 600 $rsa_key $ed25519_key $ecdsa_key
+        ${lib.optionalString (!rootless) ''^chown $"($session.uid):($session.gid)" ...$made''}
+        ^chmod 600 ...$made
 
         if ($env.DROPBEAR_ENABLE? | default "0") == "1" {
             let auth_keys = $"($session.home)/.ssh/authorized_keys"
