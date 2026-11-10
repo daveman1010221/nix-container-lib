@@ -206,7 +206,7 @@ startup = Some
   }
 ```
 
-- **session**: `None` creates no user; a shell or a login is root, with home `/root`. `FromEnv Root` creates the user `CREATE_USER`/`CREATE_UID`/`CREATE_GID` name, and runs as root when they are not set; `FromEnv Refuse` does not start without them. `Fixed` creates the user it names.
+- **session**: `None` creates no user; a shell or a login is root, with home `/root`. `FromEnv Root` creates the user `CREATE_USER`/`CREATE_UID`/`CREATE_GID` name, and runs as root when they are not set; `FromEnv Refuse` does not start without them. `Fixed` creates the user it names. `Rootless` makes the user it names at build (in `/etc/passwd`, with a home it owns, mode 700), and the container starts as that user with nothing that needs root: for a pod held to `runAsNonRoot`, no capabilities and a read-only root filesystem. Mount `/run`, `/tmp` and the home's `work` directory writable (`~/.config`, `~/.cache` and `~/.local` point into `work`; `~/.ssh` points at `/run/ssh`, made at start, so dropbear accepts the keys whatever the mounts' permissions). No nix-daemon and no boot steps; a container that runs dropbear names it in a package layer. See `smoke-test-rootless.dhall`.
 - **boot**: `DelegateCgroups` is for a container that runs containers (a Kubernetes node): it needs `--cgroupns=private` and a writable cgroup filesystem (`--privileged`), and fails the start without them. A sysctl or a ruleset that does not apply is a warning; a `Script` fails the start when `required`.
 - **launch**: `System` runs vigild as PID 1 and sets nothing up for a shell or a login.
 

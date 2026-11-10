@@ -20,6 +20,9 @@
 #   extraConfig      — optional OCI config fields, merged over the defaults
 #                      (Labels, Volumes, StopSignal, ...)
 #   tag              — the image tag (default "latest")
+#   imageName        — the image's name, the reference a runtime knows it by (default the config's name). It may hold a
+#                      registry host ("localhost/agent", as podman names what it builds): store paths, the SBOM and the
+#                      title label keep the config's name, since a store name cannot hold "/".
 #
 # AUTHORING WORKFLOW
 # ------------------
@@ -62,6 +65,7 @@
 , extraCommands ? ""
 , extraConfig ? {}
 , tag ? "latest"
+, imageName ? null
 }:
 
 let
@@ -192,10 +196,34 @@ let
   # ---------------------------------------------------------------------------
   # OCI User field
   # ---------------------------------------------------------------------------
+  # A rootless session starts as its own user (types.dhall, Session.Rootless); otherwise staticUid, else root.
+  session = (cfg.startup or { session = { kind = "none"; }; }).session;
+  rootless = session.kind == "rootless";
+
   containerUser =
-    if cfg.staticUid != null && cfg.staticGid != null
+    if rootless
+    then "${toString session.user.uid}:${toString session.user.gid}"
+    else if cfg.staticUid != null && cfg.staticGid != null
     then "${toString cfg.staticUid}:${toString cfg.staticGid}"
     else "0:0";
+
+  # A rootless session's home, made at build and owned by its user, mode 700, so that dropbear's check of the path to
+  # authorized_keys (every component up to the home: owned by the user or root, not writable by group or others) passes
+  # whatever the mounts are. What has to be writable points out of it: ~/.ssh at /run/ssh (made at start, mode 700), and
+  # ~/.config, ~/.cache and ~/.local into ~/work, the mount point of the work volume. Run under fakeroot, so the ownership
+  # is in the layer.
+  rootlessHome = lib.optionalString rootless (
+    let n = session.user.name;
+        owner = "${toString session.user.uid}:${toString session.user.gid}";
+    in ''
+      mkdir -p home/${n}/work
+      ln -s /run/ssh       home/${n}/.ssh
+      ln -s work/.config   home/${n}/.config
+      ln -s work/.cache    home/${n}/.cache
+      ln -s work/.local    home/${n}/.local
+      chown -h -R ${owner} home/${n}
+      chmod 700 home/${n}
+    '');
 
   # ---------------------------------------------------------------------------
   # OCI Cmd
@@ -249,7 +277,7 @@ let
   # OCI image assembly
   # ---------------------------------------------------------------------------
   image = pkgs.dockerTools.buildLayeredImage {
-    name      = cfg.name;
+    name      = if imageName != null then imageName else cfg.name;
     inherit tag;
     maxLayers = if isMinimal then 10 else 20;
 
@@ -271,6 +299,8 @@ let
       install -m 640 ${identity.etcShadow}/etc/shadow       etc/shadow
       install -m 640 ${identity.etcGshadow}/etc/gshadow     etc/gshadow
     '' + extraCommands;
+
+    fakeRootCommands = rootlessHome;
 
     config = lib.recursiveUpdate {
       Cmd        = containerCmd;

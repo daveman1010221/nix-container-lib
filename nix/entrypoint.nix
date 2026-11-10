@@ -6,7 +6,8 @@
 #
 # How the container starts is cfg.startup (from-dhall.nix), in three parts:
 #   session — who a shell or a login runs as: no one but root ("none"), the user
-#             CREATE_USER/UID/GID name ("from-env"), or one fixed at build ("fixed")
+#             CREATE_USER/UID/GID name ("from-env"), one created at start ("fixed"),
+#             or one made at build that the container starts as ("rootless")
 #   boot    — steps done once, at each start, before anything else runs
 #   launch  — what PID 1 is: the shell, with vigild in the background
 #             ("interactive"), or vigild ("headless", "system")
@@ -51,6 +52,7 @@ let
   nuBin = "${pkgs.nushell}/bin/nu";
 
   startup = cfg.startup;
+  rootless = startup.session.kind == "rootless";
   launch  = startup.launch.kind;
 
   # ---------------------------------------------------------------------------
@@ -319,6 +321,21 @@ let
           ${rootSession}
       }
     ''
+    else if s.kind == "rootless" then ''
+      # Rootless (types.dhall, Session.Rootless): the user was made at build and the container started as it. Nothing is
+      # created or chowned; only what is the user's to make: /run/ssh, where ~/.ssh points (mode 700, so dropbear accepts
+      # the keys there), and the directories under ~/work that ~/.config, ~/.cache and ~/.local point into.
+      let session = { user: "${s.user.name}", uid: ${toString s.user.uid}, gid: ${toString s.user.gid}, home: "/home/${s.user.name}" }
+      if (^id -u | into int) != $session.uid {
+          die $"a rootless session runs as ($session.uid), and this container runs as (^id -u): start it as its image's User"
+      }
+      ^install -d -m 700 /run/ssh
+      try {
+          for d in [".config" ".cache" ".local/share"] { mkdir $"($session.home)/work/($d)" }
+      } catch {
+          warn $"($session.home)/work is not writable: mount the work volume there, or ~/.config, ~/.cache and ~/.local stay unwritable"
+      }
+    ''
     else throw "entrypoint: unknown session kind '${s.kind}'";
 
   # ---------------------------------------------------------------------------
@@ -585,22 +602,46 @@ let
         # Always generate host keys so dropbear can be started manually if needed. ECDSA (P-256) as well as RSA and
         # ed25519: a client under a FIPS policy (a managed Mac's /etc/ssh/ssh_config.d) takes neither ssh-ed25519 nor
         # rsa-sha2-256 as a host key, and refused every login before it.
+        #
+        # DROPBEAR_HOST_KEYS_DIR names a directory of host keys kept outside the container (a mounted Secret), in dropbear's own
+        # format, named as below (dropbear_<type>_host_key). Those are copied in and none is generated, so the server's
+        # identity outlives the container; a type the directory lacks is not offered. With no directory, or one holding no
+        # key, they are generated here, as before, and change with every container.
         ^install -d -m 700 $"($session.home)/.ssh"
         let rsa_key     = $"($session.home)/.ssh/dropbear_rsa_host_key"
         let ed25519_key = $"($session.home)/.ssh/dropbear_ed25519_host_key"
         let ecdsa_key   = $"($session.home)/.ssh/dropbear_ecdsa_host_key"
 
-        if not ($rsa_key | path exists) {
-            ^dropbearkey -t rsa -f $rsa_key
+        let keys_dir = ($env.DROPBEAR_HOST_KEYS_DIR? | default "")
+        let kept = if ($keys_dir | is-empty) { [] } else {
+            [$rsa_key $ed25519_key $ecdsa_key] | each {|key|
+                let source = ($keys_dir | path join ($key | path basename))
+                if ($source | path exists) {
+                    ^install -m 600 $source $key
+                    $key
+                }
+            } | compact
         }
-        if not ($ed25519_key | path exists) {
-            ^dropbearkey -t ed25519 -f $ed25519_key
+        if not ($keys_dir | is-empty) and ($kept | is-empty) {
+            warn $"DROPBEAR_HOST_KEYS_DIR is ($keys_dir), and it holds no host key: generating them for this container"
         }
-        if not ($ecdsa_key | path exists) {
-            ^dropbearkey -t ecdsa -s 256 -f $ecdsa_key
+        let made = if ($kept | is-empty) {
+            if not ($rsa_key | path exists) {
+                ^dropbearkey -t rsa -f $rsa_key
+            }
+            if not ($ed25519_key | path exists) {
+                ^dropbearkey -t ed25519 -f $ed25519_key
+            }
+            if not ($ecdsa_key | path exists) {
+                ^dropbearkey -t ecdsa -s 256 -f $ecdsa_key
+            }
+            [$rsa_key $ed25519_key $ecdsa_key]
+        } else {
+            print $" • SSH host keys ... (($kept | length)) kept from ($keys_dir)"
+            $kept
         }
-        ^chown $"($session.uid):($session.gid)" $rsa_key $ed25519_key $ecdsa_key
-        ^chmod 600 $rsa_key $ed25519_key $ecdsa_key
+        ${lib.optionalString (!rootless) ''^chown $"($session.uid):($session.gid)" ...$made''}
+        ^chmod 600 ...$made
 
         if ($env.DROPBEAR_ENABLE? | default "0") == "1" {
             let auth_keys = $"($session.home)/.ssh/authorized_keys"
@@ -608,7 +649,7 @@ let
             if not ($authorized_keys_b64 | is-empty) {
                 $authorized_keys_b64 | ^base64 -d | save --force $auth_keys
                 ^chmod 600 $auth_keys
-                ^chown $"($session.uid):($session.gid)" $auth_keys
+                ${lib.optionalString (!rootless) ''^chown $"($session.uid):($session.gid)" $auth_keys''}
                 "services:\n  dropbear:\n    startup: enabled\n"
                     | save --force /run/vigil/layers/002-dropbear-enable.yaml
                 print " • SSH .............. dropbear starting on port ${port}"
@@ -747,12 +788,16 @@ let
 
     load-env $session_env
 
+  '' + (if rootless then ''
+    # Rootless: already the session's user, so the shell is exec'd as it is (chroot --userspec needs root).
+    exec ${shellBin} -l
+  '' else ''
     if $session.user != "root" {
         exec chroot --userspec $"($session.uid):($session.gid)" / ${shellBin} -l
     } else {
         exec ${shellBin}
     }
-  '';
+  '');
 
   phaseLaunch =
     phaseWriteLayer
@@ -770,10 +815,12 @@ in
       + phaseStorePathExports
       + phaseBoot
       + phaseSession
-      + phaseAiSetup
-      + phaseNixDaemon
-      + phaseSftpSymlink
-      + phaseCargoCache
+      # A rootless session has no root at start: AI setup (it chowns), nix-daemon and its arch config (root), the SFTP
+      # symlink (it writes /bin) and the cargo cache (it chowns /var/cache) are left out.
+      + lib.optionalString (!rootless) phaseAiSetup
+      + lib.optionalString (!rootless) phaseNixDaemon
+      + lib.optionalString (!rootless) phaseSftpSymlink
+      + lib.optionalString (!rootless) phaseCargoCache
       + phaseBanner
       + phaseLaunch;
   }
