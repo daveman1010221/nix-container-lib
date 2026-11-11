@@ -115,6 +115,7 @@ let devContainer
       , staticGid = None Natural
       , startup = None T.Startup
       , services = [] : List T.Service
+      , agentPassEnvGlob = [ "*" ]
       }
 
 let infraAgentContainer
@@ -139,6 +140,7 @@ let infraAgentContainer
       , staticGid = None Natural
       , startup = None T.Startup
       , services = [] : List T.Service
+      , agentPassEnvGlob = [ "*" ]
       }
 
 let aiAgentContainer
@@ -162,6 +164,7 @@ let aiAgentContainer
       , staticGid = None Natural
       , startup = None T.Startup
       , services = [] : List T.Service
+      , agentPassEnvGlob = [ "*" ]
       }
 
 -- ---------------------------------------------------------------------------
@@ -244,6 +247,7 @@ let systemContainer
       , staticGid = None Natural
       , startup = None T.Startup
       , services = [] : List T.Service
+      , agentPassEnvGlob = [ "*" ]
       }
 
 -- ---------------------------------------------------------------------------
@@ -286,6 +290,7 @@ let minimalContainer
       , staticGid = None Natural
       , startup = None T.Startup
       , services = [] : List T.Service
+      , agentPassEnvGlob = [ "*" ]
       }
 
 in  { devContainer

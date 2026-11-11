@@ -1,4 +1,5 @@
 {
+  agentPassEnvGlob = [ "*" ];
   ai = null;
   entrypoint = null;
   extraEnv = [];

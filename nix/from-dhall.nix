@@ -517,5 +517,7 @@ in
     staticGid    = resolvedStaticGid;
     startup      = resolvedStartup;
     services     = resolvedServices;
+    # A config rendered before agentPassEnvGlob existed: the agent supervisor gets everything, as it always did.
+    agentPassEnvGlob = cfg.agentPassEnvGlob or [ "*" ];
     hasToolchain = hasToolchain;
   }

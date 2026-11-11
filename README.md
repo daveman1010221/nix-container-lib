@@ -255,7 +255,7 @@ Lib.defaults.defaultService //
   }
 ```
 
-`passEnv = True` passes all of them, as vigil-rs 3 did for every service. vigil-rs 3 ignores these fields.
+`passEnv = True` passes all of them, as vigil-rs 3 did for every service. The agent supervisor of `InfraAgent` and `AIAgent` gets the variables `agentPassEnvGlob` names, `[ "*" ]` (all) by default. vigil-rs 3 ignores these fields.
 
 ---
 

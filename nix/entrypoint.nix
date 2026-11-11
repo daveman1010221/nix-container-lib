@@ -532,6 +532,12 @@ let
   # ---------------------------------------------------------------------------
 
   # The layer is written as JSON, which vigild reads as YAML. SESSION_HOME is the session's home, filled in at start.
+  #
+  # vigil-rs 4 gives a service only PATH, TZ, HOME, USER and LOGNAME of its own environment, plus what pass-env-glob
+  # names; the agent supervisor gets the container's variables that agentPassEnvGlob names (all of them by default, as
+  # vigil-rs 3 gave every service). nix-daemon and dropbear need none of them.
+  agentPassEnv = lib.optionalAttrs (cfg.agentPassEnvGlob != []) { pass-env-glob = cfg.agentPassEnvGlob; };
+
   modeServices =
     lib.optionalAttrs (cfg.nix.enableDaemon && cfg.mode == "dev") {
       nix-daemon = {
@@ -550,7 +556,7 @@ let
         logs-forward = "passthrough";
         on-success = "success-shutdown";
         on-failure = "failure-shutdown";
-      };
+      } // agentPassEnv;
     }
     // lib.optionalAttrs (cfg.mode == "ai-agent") {
       agent-supervisor = {
@@ -560,7 +566,7 @@ let
         logs-forward = "passthrough";
         on-success = "restart";
         on-failure = "restart";
-      };
+      } // agentPassEnv;
     }
     // lib.optionalAttrs (cfg.ssh != null && builtins.elem cfg.mode [ "dev" "ai-agent" "infra-agent" ]) {
       dropbear = {

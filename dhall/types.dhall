@@ -299,6 +299,9 @@ let ContainerConfig =
       , startup : Optional Startup
       -- ^ None: the mode's own (see Startup above).
       , services : List Service
+      , agentPassEnvGlob : List Text
+      -- ^ The container's variables the agent supervisor (InfraAgent,
+      --   AIAgent) gets, by name, with `*` and `?`. [ "*" ]: all of them.
       }
 
 in  { Mode
