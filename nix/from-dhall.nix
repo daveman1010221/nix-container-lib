@@ -388,6 +388,8 @@ let
     onSuccess    = resolveServiceExit s.onSuccess;
     onFailure    = resolveServiceExit s.onFailure;
     logs         = s.logs { Enabled = "enabled"; Disabled = "disabled"; Passthrough = "passthrough"; };
+    type         = (s.type or (u: u.Simple)) { Simple = "simple"; Oneshot = "oneshot"; };
+    runTimeout   = s.runTimeout or null;
     environment  = builtins.listToAttrs
       (map (e: { name = e.mapKey; value = e.mapValue; }) (s.environment or []));
     passEnv      = s.passEnv or false;
@@ -446,6 +448,8 @@ let
         (s: map (a: "${s.name} → ${a}")
           (builtins.filter (a: !(builtins.elem a (serviceNames ++ modeServiceNames))) s.after))
         resolvedServices;
+      timeoutNotOneshot = lib.findFirst (s: s.runTimeout != null && s.type != "oneshot") null resolvedServices;
+      restartingOneshot = lib.findFirst (s: s.type == "oneshot" && s.onSuccess == "restart") null resolvedServices;
     in
       if mode == "minimal" && resolvedServices != []
       then throw "from-dhall: ContainerConfig '${cfg.name}': mode = Minimal has no vigild to run services"
@@ -453,6 +457,10 @@ let
       then throw "from-dhall: ContainerConfig '${cfg.name}': two services are named '${dup}'"
       else if unknownAfter != []
       then throw "from-dhall: ContainerConfig '${cfg.name}': a service is ordered after one that does not exist: ${lib.concatStringsSep ", " unknownAfter}"
+      else if timeoutNotOneshot != null
+      then throw "from-dhall: ContainerConfig '${cfg.name}': service '${timeoutNotOneshot.name}' has a runTimeout, which only a Oneshot can have"
+      else if restartingOneshot != null
+      then throw "from-dhall: ContainerConfig '${cfg.name}': service '${restartingOneshot.name}' is a Oneshot with onSuccess = Restart; a Oneshot is done once it succeeds (use defaults.defaultOneshot)"
       else true;
 
   # A container that runs as a non-root user (staticUid) cannot create one at start. A rootless session is made at build and

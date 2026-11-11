@@ -32,7 +32,10 @@
       passEnv = false;
       passEnvGlob = [];
       passEnvRegex = [];
+      runTimeout = "10s";
       summary = "a one-shot: leaves /run/marker";
+      type = u:
+        u.Oneshot;
     }
     {
       after = [ "marker" ];
@@ -50,7 +53,10 @@
       passEnv = false;
       passEnvGlob = [];
       passEnvRegex = [];
-      summary = "a daemon, started once marker runs";
+      runTimeout = null;
+      summary = "a daemon, started once marker is done";
+      type = u:
+        u.Simple;
     }
     {
       after = [];
@@ -68,7 +74,10 @@
       passEnv = false;
       passEnvGlob = [ "PROBE_*" ];
       passEnvRegex = [];
+      runTimeout = null;
       summary = "prints the environment it gets";
+      type = u:
+        u.Oneshot;
     }
   ];
   shell = null;

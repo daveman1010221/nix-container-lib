@@ -9,7 +9,7 @@
 --     --env SECRET_FROM_RUN=no polar-container-lib-smoke-test-system:latest
 --
 -- What to see: /run/booted (the boot script ran), /init.scope holding every
--- process, `vigil services list` with marker inactive (a one-shot that
+-- process, `vigil services list` with marker done (a one-shot that
 -- succeeded) and ticker active, `vigil logs env-probe` with PROBE_FROM_RUN and
 -- PROBE_SET but not SECRET_FROM_RUN (with vigil-rs 4), and a stop that takes
 -- well under a second.
@@ -28,25 +28,24 @@ in  Lib.defaults.systemContainer
             , launch = Lib.Launch.System
             }
         , services =
-          [ Lib.defaults.defaultService
+          [ Lib.defaults.defaultOneshot
             //  { name = "marker"
                 , summary = "a one-shot: leaves /run/marker"
                 , command = "/bin/touch /run/marker"
-                , onSuccess = Lib.ServiceExit.Ignore
+                , runTimeout = Some "10s"
                 , logs = Lib.ServiceLogs.Disabled
                 }
           , Lib.defaults.defaultService
             //  { name = "ticker"
-                , summary = "a daemon, started once marker runs"
+                , summary = "a daemon, started once marker is done"
                 , command = "/bin/sleep 100000"
                 , after = [ "marker" ]
                 , killDelay = Some "2s"
                 }
-          , Lib.defaults.defaultService
+          , Lib.defaults.defaultOneshot
             //  { name = "env-probe"
                 , summary = "prints the environment it gets"
                 , command = "/bin/env"
-                , onSuccess = Lib.ServiceExit.Ignore
                 , environment = toMap { PROBE_SET = "yes" }
                 , passEnvGlob = [ "PROBE_*" ]
                 }

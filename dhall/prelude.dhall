@@ -67,6 +67,7 @@ in
   , Startup         = T.Startup
   , ServiceExit     = T.ServiceExit
   , ServiceLogs     = T.ServiceLogs
+  , ServiceType     = T.ServiceType
   , Service         = T.Service
 
   -- ---------------------------------------------------------------------------

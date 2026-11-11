@@ -589,6 +589,8 @@ let
     // lib.optionalAttrs (s.after != []) { inherit (s) after; }
     // lib.optionalAttrs (s.killDelay != null) { kill-delay = s.killDelay; }
     # Written only when set, so a layer that uses none of them is one vigil-rs 3 reads as before.
+    // lib.optionalAttrs (s.type != "simple") { inherit (s) type; }
+    // lib.optionalAttrs (s.runTimeout != null) { run-timeout = s.runTimeout; }
     // lib.optionalAttrs (s.environment != {}) { inherit (s) environment; }
     // lib.optionalAttrs s.passEnv { pass-env = true; }
     // lib.optionalAttrs (s.passEnvGlob != []) { pass-env-glob = s.passEnvGlob; }
@@ -752,7 +754,7 @@ let
     # is a one-shot service of its own.
     if ${headlessCondition} {
         r#'${socketPermissionsScript}'# | save --force /run/vigil/socket-permissions.nu
-        "services:\n  socket-permissions:\n    summary: open vigild's and nix-daemon's sockets to the container's user\n    command: /bin/nu /run/vigil/socket-permissions.nu\n    startup: enabled\n    on-success: ignore\n    on-failure: ignore\n"
+        "services:\n  socket-permissions:\n    summary: open vigild's and nix-daemon's sockets to the container's user\n    command: /bin/nu /run/vigil/socket-permissions.nu\n    type: oneshot\n    startup: enabled\n    on-success: ignore\n    on-failure: ignore\n"
             | save --force /run/vigil/layers/010-socket-permissions.yaml
         print " • Headless ......... vigild is PID 1; log in over SSH"
         exec /bin/vigild --layers-dir /run/vigil/layers --socket /run/vigil/vigild.sock
