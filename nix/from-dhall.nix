@@ -381,12 +381,18 @@ let
     FailureShutdown = "failure-shutdown";
   };
 
+  # A service rendered before a field existed gets the field's default (defaults.defaultService).
   resolveService = s: {
     inherit (s) name summary command after killDelay;
-    startup   = if s.enabled then "enabled" else "disabled";
-    onSuccess = resolveServiceExit s.onSuccess;
-    onFailure = resolveServiceExit s.onFailure;
-    logs      = s.logs { Enabled = "enabled"; Disabled = "disabled"; Passthrough = "passthrough"; };
+    startup      = if s.enabled then "enabled" else "disabled";
+    onSuccess    = resolveServiceExit s.onSuccess;
+    onFailure    = resolveServiceExit s.onFailure;
+    logs         = s.logs { Enabled = "enabled"; Disabled = "disabled"; Passthrough = "passthrough"; };
+    environment  = builtins.listToAttrs
+      (map (e: { name = e.mapKey; value = e.mapValue; }) (s.environment or []));
+    passEnv      = s.passEnv or false;
+    passEnvGlob  = s.passEnvGlob or [];
+    passEnvRegex = s.passEnvRegex or [];
   };
 
   resolvedServices = map resolveService (cfg.services or []);

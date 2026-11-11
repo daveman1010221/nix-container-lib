@@ -184,6 +184,10 @@ let defaultService
       , onFailure = T.ServiceExit.Restart
       , killDelay = None Text
       , logs = T.ServiceLogs.Enabled
+      , environment = [] : List { mapKey : Text, mapValue : Text }
+      , passEnv = False
+      , passEnvGlob = [] : List Text
+      , passEnvRegex = [] : List Text
       }
 
 -- ---------------------------------------------------------------------------

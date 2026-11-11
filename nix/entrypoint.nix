@@ -587,7 +587,12 @@ let
       logs-forward = s.logs;
     }
     // lib.optionalAttrs (s.after != []) { inherit (s) after; }
-    // lib.optionalAttrs (s.killDelay != null) { kill-delay = s.killDelay; };
+    // lib.optionalAttrs (s.killDelay != null) { kill-delay = s.killDelay; }
+    # Written only when set, so a layer that uses none of them is one vigil-rs 3 reads as before.
+    // lib.optionalAttrs (s.environment != {}) { inherit (s) environment; }
+    // lib.optionalAttrs s.passEnv { pass-env = true; }
+    // lib.optionalAttrs (s.passEnvGlob != []) { pass-env-glob = s.passEnvGlob; }
+    // lib.optionalAttrs (s.passEnvRegex != []) { pass-env-regex = s.passEnvRegex; };
   }) cfg.services);
 
   vigilLayer = builtins.toJSON {

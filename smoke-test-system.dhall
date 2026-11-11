@@ -5,11 +5,14 @@
 -- build with `nix build .#smokeTestSystem`, and run it with its own writable
 -- cgroup namespace (DelegateCgroups needs it):
 --
---   podman run --rm --privileged --cgroupns=private polar-container-lib-smoke-test-system:latest
+--   podman run --rm --privileged --cgroupns=private --env PROBE_FROM_RUN=yes \
+--     --env SECRET_FROM_RUN=no polar-container-lib-smoke-test-system:latest
 --
 -- What to see: /run/booted (the boot script ran), /init.scope holding every
 -- process, `vigil services list` with marker inactive (a one-shot that
--- succeeded) and ticker active, and a stop that takes well under a second.
+-- succeeded) and ticker active, `vigil logs env-probe` with PROBE_FROM_RUN and
+-- PROBE_SET but not SECRET_FROM_RUN (with vigil-rs 4), and a stop that takes
+-- well under a second.
 
 let Lib = ./dhall/prelude.dhall
 
@@ -38,6 +41,14 @@ in  Lib.defaults.systemContainer
                 , command = "/bin/sleep 100000"
                 , after = [ "marker" ]
                 , killDelay = Some "2s"
+                }
+          , Lib.defaults.defaultService
+            //  { name = "env-probe"
+                , summary = "prints the environment it gets"
+                , command = "/bin/env"
+                , onSuccess = Lib.ServiceExit.Ignore
+                , environment = toMap { PROBE_SET = "yes" }
+                , passEnvGlob = [ "PROBE_*" ]
                 }
           ]
         }

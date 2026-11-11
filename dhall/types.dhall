@@ -251,6 +251,17 @@ let Service =
       , killDelay : Optional Text
       -- ^ How long a stop waits before SIGKILL, e.g. "10s" (vigild: 5s).
       , logs : ServiceLogs
+      , environment : List { mapKey : Text, mapValue : Text }
+      -- ^ Variables set for the service (`toMap { NAME = "value" }`).
+      , passEnv : Bool
+      -- ^ The service gets all of vigild's environment, the container's
+      --   (vigil-rs 3 always did this). vigil-rs 4 passes only PATH, TZ, HOME,
+      --   USER and LOGNAME, plus what passEnvGlob and passEnvRegex name.
+      , passEnvGlob : List Text
+      -- ^ vigild's variables the service gets, by name; `*` and `?` match any
+      --   characters, e.g. [ "NODE_*", "KUBECONFIG" ].
+      , passEnvRegex : List Text
+      -- ^ The same, by regular expression, e.g. [ "(?i)(https?|no)_proxy" ].
       }
 
 let ContainerConfig =

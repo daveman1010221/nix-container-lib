@@ -225,6 +225,19 @@ services =
 
 A service starts once those it is `after` are running, not once they are done: one that needs another's output waits for it itself. `onSuccess`/`onFailure` are `Restart`, `Ignore`, `Shutdown`, `SuccessShutdown` or `FailureShutdown`; `logs` is `Enabled` (vigild's buffer and its stdout), `Disabled` (the buffer only: `vigil logs`) or `Passthrough`. `smoke-test-system.dhall` is a complete `System` container.
 
+**Environment.** vigil-rs 4 gives a service only `PATH`, `TZ`, `HOME`, `USER` and `LOGNAME` of vigild's environment, not the container's (`podman run --env`, `extraEnv`, a pod's `env`): Secrets there no longer reach every service. Name what a service needs:
+
+```dhall
+Lib.defaults.defaultService //
+  { name = "kube-apiserver", summary = "API server", command = "/bin/apiserver-run"
+  , passEnvGlob = [ "NODE_*", "KUBECONFIG" ]          -- the container's variables, by name (`*`, `?`)
+  , passEnvRegex = [ "(?i)(https?|no)_proxy" ]         -- or by regular expression
+  , environment = toMap { GOMAXPROCS = "4" }           -- set for this service only
+  }
+```
+
+`passEnv = True` passes all of them, as vigil-rs 3 did for every service. vigil-rs 3 ignores these fields.
+
 ---
 
 ## The EnvVar Placement Rule
