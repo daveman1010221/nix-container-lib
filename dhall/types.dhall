@@ -237,6 +237,14 @@ let ServiceLogs =
       -- ^ Written straight to the container's stdout/stderr.
       >
 
+let ServiceType =
+      < Simple
+      -- ^ A long-running process.
+      | Oneshot
+      -- ^ A job that runs to completion. It is done once it exits with 0, and
+      --   the services ordered after it start then. vigil-rs 4 or later.
+      >
+
 let Service =
       { name : Text
       , summary : Text
@@ -245,12 +253,29 @@ let Service =
       , enabled : Bool
       -- ^ Started when vigild starts.
       , after : List Text
-      -- ^ Started once these services are running (not once they are done).
+      -- ^ Started once these services are running; a Oneshot among them once
+      --   it is done (vigil-rs 4; vigil-rs 3 starts them once it runs).
       , onSuccess : ServiceExit
+      -- ^ A Oneshot cannot have Restart here.
       , onFailure : ServiceExit
       , killDelay : Optional Text
       -- ^ How long a stop waits before SIGKILL, e.g. "10s" (vigild: 5s).
       , logs : ServiceLogs
+      , type : ServiceType
+      , runTimeout : Optional Text
+      -- ^ A Oneshot still running after this long, e.g. "5m", is stopped and
+      --   counts as failed. Only for a Oneshot.
+      , environment : List { mapKey : Text, mapValue : Text }
+      -- ^ Variables set for the service (`toMap { NAME = "value" }`).
+      , passEnv : Bool
+      -- ^ The service gets all of vigild's environment, the container's
+      --   (vigil-rs 3 always did this). vigil-rs 4 passes only PATH, TZ, HOME,
+      --   USER and LOGNAME, plus what passEnvGlob and passEnvRegex name.
+      , passEnvGlob : List Text
+      -- ^ vigild's variables the service gets, by name; `*` and `?` match any
+      --   characters, e.g. [ "NODE_*", "KUBECONFIG" ].
+      , passEnvRegex : List Text
+      -- ^ The same, by regular expression, e.g. [ "(?i)(https?|no)_proxy" ].
       }
 
 let ContainerConfig =
@@ -274,6 +299,9 @@ let ContainerConfig =
       , startup : Optional Startup
       -- ^ None: the mode's own (see Startup above).
       , services : List Service
+      , agentPassEnvGlob : List Text
+      -- ^ The container's variables the agent supervisor (InfraAgent,
+      --   AIAgent) gets, by name, with `*` and `?`. [ "*" ]: all of them.
       }
 
 in  { Mode
@@ -308,5 +336,6 @@ in  { Mode
     , Startup
     , ServiceExit
     , ServiceLogs
+    , ServiceType
     , Service
     }

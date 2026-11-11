@@ -115,6 +115,7 @@ let devContainer
       , staticGid = None Natural
       , startup = None T.Startup
       , services = [] : List T.Service
+      , agentPassEnvGlob = [ "*" ]
       }
 
 let infraAgentContainer
@@ -139,6 +140,7 @@ let infraAgentContainer
       , staticGid = None Natural
       , startup = None T.Startup
       , services = [] : List T.Service
+      , agentPassEnvGlob = [ "*" ]
       }
 
 let aiAgentContainer
@@ -162,6 +164,7 @@ let aiAgentContainer
       , staticGid = None Natural
       , startup = None T.Startup
       , services = [] : List T.Service
+      , agentPassEnvGlob = [ "*" ]
       }
 
 -- ---------------------------------------------------------------------------
@@ -184,7 +187,30 @@ let defaultService
       , onFailure = T.ServiceExit.Restart
       , killDelay = None Text
       , logs = T.ServiceLogs.Enabled
+      , type = T.ServiceType.Simple
+      , runTimeout = None Text
+      , environment = [] : List { mapKey : Text, mapValue : Text }
+      , passEnv = False
+      , passEnvGlob = [] : List Text
+      , passEnvRegex = [] : List Text
       }
+
+-- ---------------------------------------------------------------------------
+-- defaultOneshot
+--
+-- A job that runs once when vigild starts (vigil-rs 4): done when it exits
+-- with 0, run again when it fails. The services `after` it start once it is
+-- done. Extend it:
+--   defaults.defaultOneshot //
+--     { name = "image-preload", summary = "import the bundled images"
+--     , command = "/bin/preload", after = [ "containerd" ]
+--     , runTimeout = Some "5m"
+--     }
+-- ---------------------------------------------------------------------------
+let defaultOneshot
+    : T.Service
+    = defaultService
+      //  { type = T.ServiceType.Oneshot, onSuccess = T.ServiceExit.Ignore }
 
 -- ---------------------------------------------------------------------------
 -- systemContainer
@@ -221,6 +247,7 @@ let systemContainer
       , staticGid = None Natural
       , startup = None T.Startup
       , services = [] : List T.Service
+      , agentPassEnvGlob = [ "*" ]
       }
 
 -- ---------------------------------------------------------------------------
@@ -263,6 +290,7 @@ let minimalContainer
       , staticGid = None Natural
       , startup = None T.Startup
       , services = [] : List T.Service
+      , agentPassEnvGlob = [ "*" ]
       }
 
 in  { devContainer
@@ -271,6 +299,7 @@ in  { devContainer
     , systemContainer
     , minimalContainer
     , defaultService
+    , defaultOneshot
     , minimalDashShell
     , minimalNuShell
     , defaultInteractiveFishShell

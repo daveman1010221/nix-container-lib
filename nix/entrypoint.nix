@@ -532,6 +532,12 @@ let
   # ---------------------------------------------------------------------------
 
   # The layer is written as JSON, which vigild reads as YAML. SESSION_HOME is the session's home, filled in at start.
+  #
+  # vigil-rs 4 gives a service only PATH, TZ, HOME, USER and LOGNAME of its own environment, plus what pass-env-glob
+  # names; the agent supervisor gets the container's variables that agentPassEnvGlob names (all of them by default, as
+  # vigil-rs 3 gave every service). nix-daemon and dropbear need none of them.
+  agentPassEnv = lib.optionalAttrs (cfg.agentPassEnvGlob != []) { pass-env-glob = cfg.agentPassEnvGlob; };
+
   modeServices =
     lib.optionalAttrs (cfg.nix.enableDaemon && cfg.mode == "dev") {
       nix-daemon = {
@@ -550,7 +556,7 @@ let
         logs-forward = "passthrough";
         on-success = "success-shutdown";
         on-failure = "failure-shutdown";
-      };
+      } // agentPassEnv;
     }
     // lib.optionalAttrs (cfg.mode == "ai-agent") {
       agent-supervisor = {
@@ -560,7 +566,7 @@ let
         logs-forward = "passthrough";
         on-success = "restart";
         on-failure = "restart";
-      };
+      } // agentPassEnv;
     }
     // lib.optionalAttrs (cfg.ssh != null && builtins.elem cfg.mode [ "dev" "ai-agent" "infra-agent" ]) {
       dropbear = {
@@ -587,7 +593,14 @@ let
       logs-forward = s.logs;
     }
     // lib.optionalAttrs (s.after != []) { inherit (s) after; }
-    // lib.optionalAttrs (s.killDelay != null) { kill-delay = s.killDelay; };
+    // lib.optionalAttrs (s.killDelay != null) { kill-delay = s.killDelay; }
+    # Written only when set, so a layer that uses none of them is one vigil-rs 3 reads as before.
+    // lib.optionalAttrs (s.type != "simple") { inherit (s) type; }
+    // lib.optionalAttrs (s.runTimeout != null) { run-timeout = s.runTimeout; }
+    // lib.optionalAttrs (s.environment != {}) { inherit (s) environment; }
+    // lib.optionalAttrs s.passEnv { pass-env = true; }
+    // lib.optionalAttrs (s.passEnvGlob != []) { pass-env-glob = s.passEnvGlob; }
+    // lib.optionalAttrs (s.passEnvRegex != []) { pass-env-regex = s.passEnvRegex; };
   }) cfg.services);
 
   vigilLayer = builtins.toJSON {
@@ -672,6 +685,15 @@ let
         | str replace --all "SESSION_HOME" $session.home
         | save --force /run/vigil/layers/001-container.yaml
 
+  '' + lib.optionalString (launch != "system") ''
+    # vigil-rs 4 lets only root and its own user control vigild over the socket (the chmod 666 below lets others
+    # connect, not act). A session user that is neither gets an identity: the vigil CLI works for it as it does for
+    # root. vigil-rs 3 ignores the key.
+    if $session.uid != (^id -u | into int) {
+        $"identities:\n  session:\n    access: admin\n    local:\n      user-id: ($session.uid)\n"
+            | save --force /run/vigil/layers/003-session-identity.yaml
+    }
+
   '';
 
   # System: vigild is PID 1 and runs the services. No session is set up for: no environment file for a login, no
@@ -747,7 +769,7 @@ let
     # is a one-shot service of its own.
     if ${headlessCondition} {
         r#'${socketPermissionsScript}'# | save --force /run/vigil/socket-permissions.nu
-        "services:\n  socket-permissions:\n    summary: open vigild's and nix-daemon's sockets to the container's user\n    command: /bin/nu /run/vigil/socket-permissions.nu\n    startup: enabled\n    on-success: ignore\n    on-failure: ignore\n"
+        "services:\n  socket-permissions:\n    summary: open vigild's and nix-daemon's sockets to the container's user\n    command: /bin/nu /run/vigil/socket-permissions.nu\n    type: oneshot\n    startup: enabled\n    on-success: ignore\n    on-failure: ignore\n"
             | save --force /run/vigil/layers/010-socket-permissions.yaml
         print " • Headless ......... vigild is PID 1; log in over SSH"
         exec /bin/vigild --layers-dir /run/vigil/layers --socket /run/vigil/vigild.sock

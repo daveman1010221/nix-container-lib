@@ -223,7 +223,41 @@ services =
   ]
 ```
 
-A service starts once those it is `after` are running, not once they are done: one that needs another's output waits for it itself. `onSuccess`/`onFailure` are `Restart`, `Ignore`, `Shutdown`, `SuccessShutdown` or `FailureShutdown`; `logs` is `Enabled` (vigild's buffer and its stdout), `Disabled` (the buffer only: `vigil logs`) or `Passthrough`. `smoke-test-system.dhall` is a complete `System` container.
+A service starts once those it is `after` are running. `onSuccess`/`onFailure` are `Restart`, `Ignore`, `Shutdown`, `SuccessShutdown` or `FailureShutdown`; `logs` is `Enabled` (vigild's buffer and its stdout), `Disabled` (the buffer only: `vigil logs`) or `Passthrough`. `smoke-test-system.dhall` is a complete `System` container.
+
+A job that has to finish before others start is a `Oneshot` (vigil-rs 4): it is done once it exits with 0, and the services `after` it start then. `defaults.defaultOneshot` is one that runs again when it fails; `runTimeout` stops one that hangs:
+
+```dhall
+services =
+  [ Lib.defaults.defaultService //
+      { name = "containerd", summary = "containerd", command = "/bin/containerd-run" }
+  , Lib.defaults.defaultOneshot //
+      { name = "image-preload", summary = "import the bundled images", command = "/bin/preload"
+      , after = [ "containerd" ], runTimeout = Some "5m"
+      }
+  , Lib.defaults.defaultService //
+      { name = "kubelet", summary = "kubelet", command = "/bin/kubelet-run"
+      , after = [ "containerd", "image-preload" ]   -- starts once image-preload is done
+      }
+  ]
+```
+
+With vigil-rs 3, `after` waits only until a service runs, whatever its `type`: one that needs another's output waits for it itself.
+
+**Environment.** vigil-rs 4 gives a service only `PATH`, `TZ`, `HOME`, `USER` and `LOGNAME` of vigild's environment, not the container's (`podman run --env`, `extraEnv`, a pod's `env`): Secrets there no longer reach every service. Name what a service needs:
+
+```dhall
+Lib.defaults.defaultService //
+  { name = "kube-apiserver", summary = "API server", command = "/bin/apiserver-run"
+  , passEnvGlob = [ "NODE_*", "KUBECONFIG" ]          -- the container's variables, by name (`*`, `?`)
+  , passEnvRegex = [ "(?i)(https?|no)_proxy" ]         -- or by regular expression
+  , environment = toMap { GOMAXPROCS = "4" }           -- set for this service only
+  }
+```
+
+`passEnv = True` passes all of them, as vigil-rs 3 did for every service. The agent supervisor of `InfraAgent` and `AIAgent` gets the variables `agentPassEnvGlob` names, `[ "*" ]` (all) by default. vigil-rs 3 ignores these fields.
+
+**Control.** vigil-rs 4 lets only root and vigild's own user control it over its socket. A session user that is neither (the `CREATE_USER` of a `Dev` container, logged in over SSH) gets an identity with `admin` access in the layer `003-session-identity.yaml`, so `vigil services` and `vigil logs` work for it as before.
 
 ---
 

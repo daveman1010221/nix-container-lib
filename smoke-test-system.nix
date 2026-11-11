@@ -1,4 +1,5 @@
 {
+  agentPassEnvGlob = [ "*" ];
   ai = null;
   entrypoint = null;
   extraEnv = [];
@@ -20,6 +21,7 @@
       after = [];
       command = "/bin/touch /run/marker";
       enabled = true;
+      environment = [];
       killDelay = null;
       logs = u:
         u.Disabled;
@@ -28,12 +30,19 @@
         u.Restart;
       onSuccess = u:
         u.Ignore;
+      passEnv = false;
+      passEnvGlob = [];
+      passEnvRegex = [];
+      runTimeout = "10s";
       summary = "a one-shot: leaves /run/marker";
+      type = u:
+        u.Oneshot;
     }
     {
       after = [ "marker" ];
       command = "/bin/sleep 100000";
       enabled = true;
+      environment = [];
       killDelay = "2s";
       logs = u:
         u.Enabled;
@@ -42,7 +51,34 @@
         u.Restart;
       onSuccess = u:
         u.Restart;
-      summary = "a daemon, started once marker runs";
+      passEnv = false;
+      passEnvGlob = [];
+      passEnvRegex = [];
+      runTimeout = null;
+      summary = "a daemon, started once marker is done";
+      type = u:
+        u.Simple;
+    }
+    {
+      after = [];
+      command = "/bin/env";
+      enabled = true;
+      environment = [ { mapKey = "PROBE_SET"; mapValue = "yes"; } ];
+      killDelay = null;
+      logs = u:
+        u.Enabled;
+      name = "env-probe";
+      onFailure = u:
+        u.Restart;
+      onSuccess = u:
+        u.Ignore;
+      passEnv = false;
+      passEnvGlob = [ "PROBE_*" ];
+      passEnvRegex = [];
+      runTimeout = null;
+      summary = "prints the environment it gets";
+      type = u:
+        u.Oneshot;
     }
   ];
   shell = null;
