@@ -257,6 +257,8 @@ Lib.defaults.defaultService //
 
 `passEnv = True` passes all of them, as vigil-rs 3 did for every service. The agent supervisor of `InfraAgent` and `AIAgent` gets the variables `agentPassEnvGlob` names, `[ "*" ]` (all) by default. vigil-rs 3 ignores these fields.
 
+**Control.** vigil-rs 4 lets only root and vigild's own user control it over its socket. A session user that is neither (the `CREATE_USER` of a `Dev` container, logged in over SSH) gets an identity with `admin` access in the layer `003-session-identity.yaml`, so `vigil services` and `vigil logs` work for it as before.
+
 ---
 
 ## The EnvVar Placement Rule

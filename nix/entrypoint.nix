@@ -685,6 +685,15 @@ let
         | str replace --all "SESSION_HOME" $session.home
         | save --force /run/vigil/layers/001-container.yaml
 
+  '' + lib.optionalString (launch != "system") ''
+    # vigil-rs 4 lets only root and its own user control vigild over the socket (the chmod 666 below lets others
+    # connect, not act). A session user that is neither gets an identity: the vigil CLI works for it as it does for
+    # root. vigil-rs 3 ignores the key.
+    if $session.uid != (^id -u | into int) {
+        $"identities:\n  session:\n    access: admin\n    local:\n      user-id: ($session.uid)\n"
+            | save --force /run/vigil/layers/003-session-identity.yaml
+    }
+
   '';
 
   # System: vigild is PID 1 and runs the services. No session is set up for: no environment file for a login, no
