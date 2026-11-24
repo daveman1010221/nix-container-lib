@@ -1,8 +1,8 @@
-{ pkgs, cfg, devEnv }:
-let hasBin = name: builtins.pathExists "${devEnv}/bin/${name}";
-in if !hasBin "git" then null
-   else pkgs.writeText "setup_git.fish" ''
+{ pkgs, cfg }:
+let needs = import ./needs.nix;
+in pkgs.writeText "setup_git.fish" ''
      function setup_git
+         ${needs "setup_git" [ "git" ]}
          read --prompt-str "Enter your Git user name: " git_user
          read --prompt-str "Enter your Git email: " git_email
          read --prompt-str "Do you want to configure Git credentials helper? (y/N): " use_creds

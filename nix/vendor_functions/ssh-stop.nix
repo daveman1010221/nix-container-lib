@@ -1,8 +1,8 @@
-{ pkgs, cfg, devEnv }:
-let hasBin = name: builtins.pathExists "${devEnv}/bin/${name}";
-in if !hasBin "dropbear" then null
-   else pkgs.writeText "ssh-stop.fish" ''
+{ pkgs, cfg }:
+let needs = import ./needs.nix;
+in pkgs.writeText "ssh-stop.fish" ''
      function ssh-stop
+         ${needs "ssh-stop" [ "dropbear" ]}
          set pids (pgrep dropbear)
          if test -z "$pids"
              echo "ℹ️  No Dropbear processes running."

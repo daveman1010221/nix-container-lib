@@ -1,4 +1,4 @@
-{ pkgs, cfg, devEnv }:
+{ pkgs, cfg }:
 pkgs.writeText "is_a_directory.fish" ''
   function is_a_directory --description="Checks if the path is a directory"
       if test -d $argv[1]

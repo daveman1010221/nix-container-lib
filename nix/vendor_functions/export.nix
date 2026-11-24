@@ -1,4 +1,4 @@
-{ pkgs, cfg, devEnv }:
+{ pkgs, cfg }:
 pkgs.writeText "export.fish" ''
   function export --description="Emulates the bash export command"
       if [ $argv ] 

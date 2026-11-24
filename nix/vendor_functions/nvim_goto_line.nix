@@ -1,8 +1,8 @@
-{ pkgs, cfg, devEnv }:
-let hasBin = name: builtins.pathExists "${devEnv}/bin/${name}";
-in if !hasBin "nvim" || !hasBin "fzf" || !hasBin "rg" then null
-   else pkgs.writeText "nvim_goto_line.fish" ''
+{ pkgs, cfg }:
+let needs = import ./needs.nix;
+in pkgs.writeText "nvim_goto_line.fish" ''
      function nvim_goto_line --description="ripgrep to find contents, fzf to select, open in neovim."
+         ${needs "nvim_goto_line" [ "nvim" "fzf" "rg" ]}
          set nvim_exists (which nvim)
          if test -z "$nvim_exists"
              return

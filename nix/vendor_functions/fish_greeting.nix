@@ -1,6 +1,5 @@
-{ pkgs, cfg, devEnv }:
-let hasBin = name: builtins.pathExists "${devEnv}/bin/${name}";
-in pkgs.writeText "fish_greeting.fish" ''
+{ pkgs, cfg }:
+pkgs.writeText "fish_greeting.fish" ''
   function fish_greeting --description="Displays a container welcome message."
       set_color $fish_color_autosuggestion
       set_color normal

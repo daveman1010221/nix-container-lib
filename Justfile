@@ -58,9 +58,15 @@ smoke-test-system:
 smoke-test-rootless:
     nix build .#smokeTestRootless -L
 
-# Run nix flake check
-check:
+# Run nix flake check, and evaluate every smoke test image with import-from-derivation off
+check: check-eval
     nix flake check
+
+# Every smoke test image evaluates without building anything: an image's tools are looked for when its functions run,
+# never by building its environment while it is evaluated, so a builder with no way out (a CI pod that gathers sources
+# by evaluating) can evaluate it
+check-eval:
+    for image in smokeTest smokeTestSystem smokeTestRootless; do nix eval --raw --option allow-import-from-derivation false .#$image.drvPath > /dev/null; done
 
 # Enter the dev shell
 dev:

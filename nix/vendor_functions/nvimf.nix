@@ -1,8 +1,8 @@
-{ pkgs, cfg, devEnv }:
-let hasBin = name: builtins.pathExists "${devEnv}/bin/${name}";
-in if !hasBin "nvim" || !hasBin "fzf" then null
-   else pkgs.writeText "nvimf.fish" ''
+{ pkgs, cfg }:
+let needs = import ./needs.nix;
+in pkgs.writeText "nvimf.fish" ''
      function nvimf
+         ${needs "nvimf" [ "nvim" "fzf" ]}
          nvim_goto_files $argv
      end
    ''

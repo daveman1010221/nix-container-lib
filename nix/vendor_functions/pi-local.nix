@@ -1,8 +1,8 @@
-{ pkgs, cfg, devEnv }:
-let hasBin = name: builtins.pathExists "${devEnv}/bin/${name}";
-in if !hasBin "pi" || !hasBin "curl" then null
-   else pkgs.writeText "pi-local.fish" ''
+{ pkgs, cfg }:
+let needs = import ./needs.nix;
+in pkgs.writeText "pi-local.fish" ''
      function pi-local --description "Run pi agent against local llama.cpp server"
+         ${needs "pi-local" [ "pi" "curl" ]}
          set -l base_url (test -n "$LLAMA_BASE_URL" && echo "$LLAMA_BASE_URL" || echo "http://localhost:8080/v1")
          set -l model    (test -n "$LLAMA_MODEL"    && echo "$LLAMA_MODEL"    || echo "local-model")
          if not curl -sf "$base_url/models" >/dev/null 2>&1

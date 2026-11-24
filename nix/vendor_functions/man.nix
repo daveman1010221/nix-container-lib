@@ -1,8 +1,11 @@
-{ pkgs, cfg, devEnv }:
-let hasBin = name: builtins.pathExists "${devEnv}/bin/${name}";
-in if !hasBin "bat" then null
-   else pkgs.writeText "man.fish" ''
-     function man --description="Get the page, man"
-         ${pkgs.man}/bin/man $argv | bat --language man --style plain
-     end
-   ''
+{ pkgs, cfg }:
+# Paged through bat where the image has it, looked for when it is called; else as man pages itself.
+pkgs.writeText "man.fish" ''
+  function man --description="Get the page, man"
+      if command -q bat
+          ${pkgs.man}/bin/man $argv | bat --language man --style plain
+      else
+          ${pkgs.man}/bin/man $argv
+      end
+  end
+''

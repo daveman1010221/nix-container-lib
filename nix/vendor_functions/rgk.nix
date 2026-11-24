@@ -1,8 +1,8 @@
-{ pkgs, cfg, devEnv }:
-let hasBin = name: builtins.pathExists "${devEnv}/bin/${name}";
-in if !hasBin "rg" then null
-   else pkgs.writeText "rgk.fish" ''
+{ pkgs, cfg }:
+let needs = import ./needs.nix;
+in pkgs.writeText "rgk.fish" ''
      function rgk
+         ${needs "rgk" [ "rg" ]}
          rg --hyperlink-format=kitty $argv
      end
    ''

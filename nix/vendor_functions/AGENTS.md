@@ -117,6 +117,27 @@ function my-custom-function
 end
 ```
 
+## Tools a Function Needs
+
+A function that needs commands of its image's starts with `needs.nix`'s check, which looks for them when the function is
+called and, for one missing, names it and returns 127:
+
+```nix
+{ pkgs, cfg }:
+let needs = import ./needs.nix;
+in pkgs.writeText "lh.fish" ''
+     function lh --description 'An approximation of "ls -alh", but uses eza.'
+         ${needs "lh" [ "eza" ]}
+         eza --long --all $argv
+     end
+   ''
+```
+
+Never decide at evaluation whether the image has a tool (`builtins.pathExists "${devEnv}/bin/<name>"`): that builds the
+whole environment before the image can be evaluated (import from derivation), so a builder with no way out, one that
+gathers sources by evaluating, cannot evaluate the image. `just check-eval` evaluates every smoke test image with
+import-from-derivation off.
+
 ## When Modifying
 
 1. **Static functions** - Edit `.fish` files directly

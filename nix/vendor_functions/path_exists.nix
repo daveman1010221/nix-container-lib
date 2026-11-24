@@ -1,4 +1,4 @@
-{ pkgs, cfg, devEnv }:
+{ pkgs, cfg }:
 pkgs.writeText "path_exists.fish" ''
   function path_exists --description="Checks if the path exists"
       if test -e $argv[1]

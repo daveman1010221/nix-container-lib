@@ -1,4 +1,4 @@
-{ pkgs, cfg, devEnv }:
+{ pkgs, cfg }:
 pkgs.writeText "var_erase.fish" ''
   function var_erase --description="Fish shell is missing a proper ability to delete a var from all scopes."
       set -el $argv[1]

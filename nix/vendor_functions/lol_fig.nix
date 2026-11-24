@@ -1,8 +1,8 @@
-{ pkgs, cfg, devEnv }:
-let hasBin = name: builtins.pathExists "${devEnv}/bin/${name}";
-in if !hasBin "figlet" then null
-   else pkgs.writeText "lol_fig.fish" ''
+{ pkgs, cfg }:
+let needs = import ./needs.nix;
+in pkgs.writeText "lol_fig.fish" ''
      function lol_fig --description="lolcat (dotacat) inside a figlet"
+         ${needs "lol_fig" [ "figlet" ]}
          if type -q dotacat
              echo $argv | figlet | dotacat
          else

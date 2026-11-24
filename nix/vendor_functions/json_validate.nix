@@ -1,8 +1,8 @@
-{ pkgs, cfg, devEnv }:
-let hasBin = name: builtins.pathExists "${devEnv}/bin/${name}";
-in if !hasBin "jsonschema" then null
-   else pkgs.writeText "json_validate.fish" ''
+{ pkgs, cfg }:
+let needs = import ./needs.nix;
+in pkgs.writeText "json_validate.fish" ''
      function json_validate --description="Validate provided json against provided schema."
+         ${needs "json_validate" [ "jsonschema" ]}
          if ! isatty stdin
              set -l tmp_file get_random_filename
              read > /tmp/$tmp_file; or exit -1

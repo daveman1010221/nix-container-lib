@@ -1,4 +1,4 @@
-{ pkgs, cfg, devEnv }:
+{ pkgs, cfg }:
 pkgs.writeText "files_compare.fish" ''
   function files_compare --description="Requires two file paths to compare."
       if test $argv[1] = "" -o $argv[2] = ""

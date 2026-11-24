@@ -1,8 +1,8 @@
-{ pkgs, cfg, devEnv }:
-let hasBin = name: builtins.pathExists "${devEnv}/bin/${name}";
-in if !hasBin "fd" || !hasBin "fzf" then null
-   else pkgs.writeText "fdfz.fish" ''
+{ pkgs, cfg }:
+let needs = import ./needs.nix;
+in pkgs.writeText "fdfz.fish" ''
      function fdfz
+         ${needs "fdfz" [ "fd" "fzf" ]}
          fd_fzf $argv
      end
    ''

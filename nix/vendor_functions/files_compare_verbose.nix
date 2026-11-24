@@ -1,4 +1,4 @@
-{ pkgs, cfg, devEnv }:
+{ pkgs, cfg }:
 pkgs.writeText "files_compare_verbose.fish" ''
   function files_compare_verbose --description="Text output for files_compare"
       if files_compare $argv[1] $argv[2]

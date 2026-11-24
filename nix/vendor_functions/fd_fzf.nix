@@ -1,8 +1,8 @@
-{ pkgs, cfg, devEnv }:
-let hasBin = name: builtins.pathExists "${devEnv}/bin/${name}";
-in if !hasBin "fd" || !hasBin "fzf" then null
-   else pkgs.writeText "fd_fzf.fish" ''
+{ pkgs, cfg }:
+let needs = import ./needs.nix;
+in pkgs.writeText "fd_fzf.fish" ''
      function fd_fzf --description="Pipe fd output to fzf"
+         ${needs "fd_fzf" [ "fd" "fzf" ]}
          set fd_exists (which fd)
          if test -z "$fd_exists"
              return

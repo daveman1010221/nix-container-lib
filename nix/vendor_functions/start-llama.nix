@@ -1,8 +1,8 @@
-{ pkgs, cfg, devEnv }:
-let hasBin = name: builtins.pathExists "${devEnv}/bin/${name}";
-in if !hasBin "llama-server" then null
-   else pkgs.writeText "start-llama.fish" ''
+{ pkgs, cfg }:
+let needs = import ./needs.nix;
+in pkgs.writeText "start-llama.fish" ''
      function start-llama --description "Start llama.cpp server with a model"
+         ${needs "start-llama" [ "llama-server" ]}
          set -l port     (test -n "$LLAMA_PORT"       && echo "$LLAMA_PORT"       || echo "8080")
          set -l ctx      (test -n "$LLAMA_CTX_SIZE"   && echo "$LLAMA_CTX_SIZE"   || echo "32768")
          set -l gpu_lay  (test -n "$LLAMA_GPU_LAYERS" && echo "$LLAMA_GPU_LAYERS" || echo "99")

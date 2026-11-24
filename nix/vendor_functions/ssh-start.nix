@@ -1,8 +1,8 @@
-{ pkgs, cfg, devEnv }:
-let hasBin = name: builtins.pathExists "${devEnv}/bin/${name}";
-in if !hasBin "dropbear" || !hasBin "dropbearkey" then null
-   else pkgs.writeText "ssh-start.fish" ''
+{ pkgs, cfg }:
+let needs = import ./needs.nix;
+in pkgs.writeText "ssh-start.fish" ''
      function ssh-start
+         ${needs "ssh-start" [ "dropbear" "dropbearkey" ]}
          set ssh_dir ~/.ssh
          set auth_keys $ssh_dir/authorized_keys
          set rsa_key $ssh_dir/dropbear_rsa_host_key

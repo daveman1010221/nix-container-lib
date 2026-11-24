@@ -1,8 +1,8 @@
-{ pkgs, cfg, devEnv }:
-let hasBin = name: builtins.pathExists "${devEnv}/bin/${name}";
-in if !hasBin "cowsay" then null
-   else pkgs.writeText "lol.fish" ''
+{ pkgs, cfg }:
+let needs = import ./needs.nix;
+in pkgs.writeText "lol.fish" ''
      function lol --description="lolcat (dotacat) inside cowsay"
+         ${needs "lol" [ "cowsay" ]}
          set cows (ls ${pkgs.cowsay}/share/cowsay/cows/*.cow)
          set total_cows (count $cows)
          set random_cow (random 1 $total_cows)
