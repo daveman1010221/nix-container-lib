@@ -67,11 +67,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1792513890,
-        "narHash": "sha256-56FU4qF+N4YRTb7ttCfowLcJBpqJoA5dn1IUdiS1+ho=",
+        "lastModified": 1795485054,
+        "narHash": "sha256-xlMmHCg4hkO+/fHUtK+KySdKaLSNRCov3BaR6zT/6WI=",
         "owner": "daveman1010221",
         "repo": "uutils-micro",
-        "rev": "fd2c97e53c9962300118b0534cae101e1b409213",
+        "rev": "d18a27bccd95785eb3374e44055c4a8523cff76e",
         "type": "github"
       },
       "original": {
